@@ -330,15 +330,29 @@ export default function RepairDeliveryCard({ ticketId }) {
             <Text style={{ flex: 1, fontSize: 12.5, fontWeight: '800', color: TEAL }}>{`Track Delivery (${events.length})`}</Text>
             {open ? <ChevronUp size={16} color={TEAL} /> : <ChevronDown size={16} color={TEAL} />}
           </Pressable>
-          {open ? events.slice().reverse().map((e, i) => (
-            <View key={`${e.at}-${i}`} style={{ flexDirection: 'row', marginTop: 8 }}>
-              <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: i === 0 ? TEAL : '#C9CED6', marginTop: 5 }} />
-              <View style={{ flex: 1, marginLeft: 8 }}>
-                <Text style={{ fontSize: 12.5, fontWeight: '700', color: TEXT }}>{e.label}</Text>
-                <Text style={{ fontSize: 11.5, color: MUTED }}>{[e.note, when(e.at)].filter(Boolean).join(' · ')}</Text>
-              </View>
+          {/* Timeline, oldest → latest: teal tick per recorded step, continuous teal line, latest ringed. */}
+          {open ? (
+            <View style={{ marginTop: 10 }}>
+              {events.map((e, i, all) => {
+                const last = i === all.length - 1;
+                return (
+                  <View key={`${e.at}-${i}`} style={{ flexDirection: 'row' }}>
+                    <View style={{ alignItems: 'center', width: 24 }}>
+                      <View style={{ width: 20, height: 20, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: TEAL, borderWidth: last ? 3 : 0, borderColor: '#CDE7EA' }}>
+                        <Check size={11} color="#FFFFFF" strokeWidth={3} />
+                      </View>
+                      {!last ? <View style={{ flex: 1, width: 2, minHeight: 12, backgroundColor: TEAL }} /> : null}
+                    </View>
+                    <View style={{ flex: 1, marginLeft: 10, paddingBottom: last ? 0 : 12 }}>
+                      <Text style={{ fontSize: 12.5, fontWeight: '800', color: last ? TEAL : TEXT, marginTop: 1 }}>{e.label}</Text>
+                      {e.note ? <Text style={{ fontSize: 11.5, color: '#374151', marginTop: 1 }}>{e.note}</Text> : null}
+                      {e.at ? <Text style={{ fontSize: 11, color: MUTED, marginTop: 1 }}>{when(e.at)}</Text> : null}
+                    </View>
+                  </View>
+                );
+              })}
             </View>
-          )) : null}
+          ) : null}
         </>
       )}
 
