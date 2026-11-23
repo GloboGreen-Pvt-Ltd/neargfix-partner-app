@@ -3,7 +3,7 @@ import { Pressable, ScrollView, Text, View } from 'react-native';
 import SafeModal, { ModalInsets } from '../../../components/SafeModal';
 import { rf } from '../../../utils/responsive';
 import { C, ErrorBox, PrimaryButton } from '../sell/kit';
-import { clock, shortDay, ymd } from './buyKit';
+import { shortDay, ymd } from './buyKit';
 
 // Bottom sheet: pick the pickup (or shop-visit) day and hour for a purchase
 // order. Next 7 days, hourly slots 9 AM – 8 PM; past slots today are off.
@@ -11,6 +11,13 @@ import { clock, shortDay, ymd } from './buyKit';
 
 const HOURS = Array.from({ length: 12 }, (_, i) => 9 + i);
 const hh = (h) => `${String(h).padStart(2, '0')}:00`;
+// One-hour slot label: "10–11 AM", "11 AM–12 PM", "12–1 PM".
+const h12 = (h) => ({ n: h % 12 || 12, ap: h < 12 || h === 24 ? 'AM' : 'PM' });
+const slotRange = (h) => {
+  const a = h12(h);
+  const b = h12(h + 1);
+  return a.ap === b.ap ? `${a.n}–${b.n} ${b.ap}` : `${a.n} ${a.ap}–${b.n} ${b.ap}`;
+};
 
 export default function ScheduleSheet({ visible, title, initialDate, initialStart, onClose, onSubmit }) {
   const days = useMemo(() => Array.from({ length: 7 }, (_, i) => {
@@ -90,8 +97,8 @@ export default function ScheduleSheet({ visible, title, initialDate, initialStar
                   const on = h === hour;
                   const off = past(h);
                   return (
-                    <Pressable key={h} disabled={off} onPress={() => { setHour(h); setError(null); }} accessibilityRole="button" accessibilityState={{ selected: on, disabled: off }} style={[chip(on, off), { width: '23%', flexGrow: 1, height: 38 }]}>
-                      <Text style={{ fontSize: rf(12), fontWeight: '800', color: on ? '#FFFFFF' : C.text }}>{clock(hh(h))}</Text>
+                    <Pressable key={h} disabled={off} onPress={() => { setHour(h); setError(null); }} accessibilityRole="button" accessibilityState={{ selected: on, disabled: off }} style={[chip(on, off), { width: '31%', flexGrow: 1, height: 40 }]}>
+                      <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8} style={{ fontSize: rf(12), fontWeight: '800', color: on ? '#FFFFFF' : C.text }}>{slotRange(h)}</Text>
                     </Pressable>
                   );
                 })}
