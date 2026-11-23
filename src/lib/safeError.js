@@ -32,7 +32,8 @@ export function isSafeMessage(text) {
 /** Safe text for an HTTP failure. `raw` is the server's own message, if any. */
 export function safeHttpMessage(status, raw) {
   if (status === 401) return SAFE.session;
-  if (status === 403) return SAFE.forbidden;
+  // 403: keep the server's plain reason (e.g. "TPIN authorization invalid, expired or already used").
+  if (status === 403) return isSafeMessage(raw) ? String(raw).trim() : SAFE.forbidden;
   if (status === 404) return SAFE.notFound;
   if (status === 408 || status === 504) return SAFE.timeout;
   if (status === 413) return SAFE.tooLarge;

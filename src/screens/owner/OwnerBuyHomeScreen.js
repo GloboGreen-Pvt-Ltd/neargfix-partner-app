@@ -103,7 +103,8 @@ const specLine = (it) => String(it?.description || '').split(/\s*[·|/,]\s*/).ma
 // uses the `active:` className.
 // Horizontal category menu item: round image (admin category-menu image or
 // the category's own image), the line icon when there is none.
-function RailItem({ label, Icon, active, onPress, badge }) {
+function RailItem({ label, Icon, image, active, onPress, badge }) {
+  const [broken, setBroken] = useState(false);
   return (
     <Pressable
       onPress={onPress}
@@ -119,8 +120,10 @@ function RailItem({ label, Icon, active, onPress, badge }) {
         backgroundColor: '#FAFBFD', borderWidth: active ? 2 : 3, borderColor: active ? TEAL : '#FFFFFF',
         shadowColor: TEAL, shadowOpacity: 0.10, shadowRadius: 10, shadowOffset: { width: 0, height: 3 }, elevation: 3,
       }}>
-        {/* Line icon only (no category images), as on Home → Services. */}
-        <Icon size={22} color="#17191B" strokeWidth={1.5} />
+        {/* Category image (admin menu / category image); line icon when there is none. */}
+        {image && !broken
+          ? <Image source={{ uri: image }} style={{ width: 38, height: 38 }} resizeMode="contain" onError={() => setBroken(true)} />
+          : <Icon size={22} color="#17191B" strokeWidth={1.5} />}
         {badge != null ? (
           <View style={{ position: 'absolute', top: -6, right: -6, minWidth: 20, height: 20, borderRadius: 10, paddingHorizontal: 5, backgroundColor: TEAL, borderWidth: 2, borderColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' }}>
             <Text style={{ fontSize: 10, fontWeight: '800', color: '#FFFFFF' }}>{badge}</Text>
@@ -555,14 +558,29 @@ export default function OwnerBuyHomeScreen({ navigation }) {
             )}
 
             {/* Summary: New Requests · Active Orders · Completed Today (live counts) */}
-            {/* New Requests · Active Orders · Completed Today — Services-style icon tiles, live count as a badge. */}
-            <View style={{ flexDirection: 'row', paddingHorizontal: PAD - 4, marginTop: 16 }}>
+            {/* Summary: New Requests · Active Orders · Completed Today (live counts) */}
+            <View style={{ flexDirection: 'row', paddingHorizontal: PAD, marginTop: 16 }}>
               {[
-                { key: 'req', Icon: MessageSquareText, value: newRequests, label: 'New Requests', go: () => navigation.navigate('OwnerSellRequests') },
-                { key: 'act', Icon: ShoppingCart, value: activeOrders, label: 'Active Orders', go: () => navigation.navigate('BuyOrders') },
-                { key: 'done', Icon: CheckCircle2, value: doneToday, label: 'Completed', go: () => navigation.navigate('BuyOrders') },
-              ].map((s) => (
-                <RailItem key={s.key} label={s.label} Icon={s.Icon} badge={loading ? null : s.value} onPress={s.go} />
+                { key: 'req', Icon: MessageSquareText, tint: TEAL, value: newRequests, label: 'New Requests', caption: 'Customer leads', go: () => navigation.navigate('OwnerSellRequests') },
+                { key: 'act', Icon: ShoppingCart, tint: '#E08A00', value: activeOrders, label: 'Active Orders', caption: 'In progress', go: () => navigation.navigate('BuyOrders') },
+                { key: 'done', Icon: CheckCircle2, tint: '#16A34A', value: doneToday, label: 'Completed', caption: 'Today', go: () => navigation.navigate('BuyOrders') },
+              ].map((s, i) => (
+                // Exact Home overview card: white card, colour only in the faint border/shadow and the round icon.
+                <Pressable key={s.key} onPress={s.go} accessibilityRole="button" accessibilityLabel={`${s.label}: ${s.value}`} className="active:opacity-70"
+                  style={{ flex: 1, marginLeft: i ? 8 : 0, height: 70, backgroundColor: '#FFFFFF', borderRadius: 16, borderWidth: 1, borderColor: `${s.tint}29`,
+                    shadowColor: s.tint, shadowOpacity: 0.12, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 2,
+                    paddingHorizontal: 9, paddingVertical: 6, justifyContent: 'space-between' }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8} style={{ flex: 1, minWidth: 0, marginRight: 4, fontSize: compact ? 10 : 11, fontWeight: '700', color: '#111111' }}>{s.label}</Text>
+                    <View style={{ width: compact ? 22 : 24, height: compact ? 22 : 24, borderRadius: 12, backgroundColor: s.tint, alignItems: 'center', justifyContent: 'center' }}>
+                      <s.Icon size={compact ? 12 : 13} color="#FFFFFF" strokeWidth={2.2} />
+                    </View>
+                  </View>
+                  <View>
+                    <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} style={{ fontSize: compact ? 16 : 18, lineHeight: compact ? 20 : 22, fontWeight: '800', color: '#111111' }}>{loading ? '–' : s.value}</Text>
+                    <Text numberOfLines={1} style={{ fontSize: compact ? 9 : 9.5, color: '#6B7280', fontWeight: '500' }}>{s.caption}</Text>
+                  </View>
+                </Pressable>
               ))}
             </View>
 

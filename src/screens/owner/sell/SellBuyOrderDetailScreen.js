@@ -271,7 +271,8 @@ export default function SellBuyOrderDetailScreen({ navigation, route }) {
         <PrimaryButton title="Confirm Order" variant="green" style={{ marginTop: 12 }} loading={busy === 'confirm'} disabled={!!busy} onPress={() => act('confirm', {}, 'Order confirmed')} />
       ) : null}
 
-      {home && CAN_ASSIGN.includes(s) && route?.params?.fromAssign ? (
+      {/* Assign / Reassign wherever Order Details is opened (Sell orders list or Assign Pickup); the server re-checks status + same-shop employee. */}
+      {home && CAN_ASSIGN.includes(s) ? (
         <PrimaryButton title={o.assignedStaffUserId ? 'Reassign Pickup Person' : 'Assign Pickup Person'} icon={Truck} variant={o.assignedStaffUserId ? 'outline' : 'green'}
           style={{ marginTop: 10 }} disabled={!!busy} onPress={() => navigation.navigate('SellBuyAssign', { order: o })} />
       ) : null}

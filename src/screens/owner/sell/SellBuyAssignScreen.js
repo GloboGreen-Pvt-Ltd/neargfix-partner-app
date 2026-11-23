@@ -9,18 +9,26 @@ import { C, Card, EmptyBox, ErrorBox, PrimaryButton, SellScreen, Thumb } from '.
 // Assign Pickup — pick the shop employee who collects the product from the shop
 // and delivers it (POST /shop/buy-orders/{id}/assign; the server re-checks the
 // employee belongs to this shop). Also used to reassign.
-// Pickup time choices: today / tomorrow, 30-minute steps 08:00–21:00, future only.
+// Pickup time choices: today / tomorrow, one-hour slots 8 AM – 9 PM (start saved); today's slots stay until 15 min before they end.
 const DAY_MS = 86400000;
 function slotsFor(dayOffset) {
   const base = new Date(); base.setHours(0, 0, 0, 0);
   const out = [];
-  for (let m = 8 * 60; m <= 21 * 60; m += 30) {
+  for (let m = 8 * 60; m <= 20 * 60; m += 60) {
     const t = new Date(base.getTime() + dayOffset * DAY_MS + m * 60000);
-    if (t.getTime() > Date.now() + 15 * 60000) out.push(t);
+    // Keep the current hour (e.g. 5–6 PM at 5:20) while it still has > 15 min left.
+    if (t.getTime() + 60 * 60000 > Date.now() + 15 * 60000) out.push(t);
   }
   return out;
 }
 const hhmm = (d) => d.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit', hour12: true });
+// "5–6 PM", "11 AM–12 PM" for the hour starting at d.
+const range = (d) => {
+  const h = d.getHours();
+  const p = (x) => ({ n: x % 12 || 12, ap: x % 24 < 12 ? 'AM' : 'PM' });
+  const a = p(h), b = p(h + 1);
+  return a.ap === b.ap ? `${a.n}–${b.n} ${b.ap}` : `${a.n} ${a.ap}–${b.n} ${b.ap}`;
+};
 
 export default function SellBuyAssignScreen({ navigation, route }) {
   const o = route?.params?.order || {};
@@ -96,13 +104,13 @@ export default function SellBuyAssignScreen({ navigation, route }) {
           return (
             <Pressable key={t.getTime()} onPress={() => setAt(t)} accessibilityRole="radio" accessibilityState={{ selected: !!on }}
               style={{ paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, borderWidth: on ? 1.5 : 1, borderColor: on ? C.green : C.border, backgroundColor: on ? C.greenBg : '#FFFFFF' }}>
-              <Text style={{ fontSize: 12.5, fontWeight: '800', color: on ? C.green : C.text }}>{hhmm(t)}</Text>
+              <Text style={{ fontSize: 12.5, fontWeight: '800', color: on ? C.green : C.text }}>{range(t)}</Text>
             </Pressable>
           );
         })}
         {!slotsFor(day).length ? <Text style={{ fontSize: 12, color: C.muted }}>No times left today — choose Tomorrow.</Text> : null}
       </ScrollView>
-      {at ? <Text style={{ fontSize: 11.5, color: C.muted }}>Pickup {at.toDateString() === new Date().toDateString() ? 'today' : 'on ' + at.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })} at {hhmm(at)}. The employee is reminded 10 minutes before.</Text> : null}
+      {at ? <Text style={{ fontSize: 11.5, color: C.muted }}>Pickup {at.toDateString() === new Date().toDateString() ? 'today' : 'on ' + at.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })} {at.getMinutes() === 0 ? range(at) : `at ${hhmm(at)}`}. The employee is reminded 10 minutes before.</Text> : null}
 
       <Text style={{ fontSize: 14, fontWeight: '800', color: C.text, marginTop: 16, marginBottom: 6 }}>Assign Pickup Person</Text>
       {error ? <ErrorBox message={error} onRetry={load} /> : null}

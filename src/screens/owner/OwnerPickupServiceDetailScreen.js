@@ -303,6 +303,7 @@ export default function OwnerPickupServiceDetailScreen({ navigation, route }) {
       const updated = await confirmShopRepairBooking(data.id);
       setData(updated);
     } catch (e) {
+      if (e?.cancelled) return; // TPIN sheet closed by the user: not an error
       notify('Could not confirm', e?.body?.message || e?.message || 'Please try again.', { preset: 'error', haptic: 'error' });
     } finally {
       setConfirming(false);
