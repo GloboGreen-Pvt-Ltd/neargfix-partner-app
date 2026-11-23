@@ -9,14 +9,15 @@ import { C, Card, EmptyBox, ErrorBox, PrimaryButton, SellScreen, Thumb } from '.
 // Assign Pickup — pick the shop employee who collects the product from the shop
 // and delivers it (POST /shop/buy-orders/{id}/assign; the server re-checks the
 // employee belongs to this shop). Also used to reassign.
-// Pickup time choices: today / tomorrow, one-hour slots 8 AM – 9 PM (start saved), future only.
+// Pickup time choices: today / tomorrow, one-hour slots 8 AM – 9 PM (start saved); today's slots stay until 15 min before they end.
 const DAY_MS = 86400000;
 function slotsFor(dayOffset) {
   const base = new Date(); base.setHours(0, 0, 0, 0);
   const out = [];
   for (let m = 8 * 60; m <= 20 * 60; m += 60) {
     const t = new Date(base.getTime() + dayOffset * DAY_MS + m * 60000);
-    if (t.getTime() > Date.now() + 15 * 60000) out.push(t);
+    // Keep the current hour (e.g. 5–6 PM at 5:20) while it still has > 15 min left.
+    if (t.getTime() + 60 * 60000 > Date.now() + 15 * 60000) out.push(t);
   }
   return out;
 }
