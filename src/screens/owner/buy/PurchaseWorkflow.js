@@ -1,7 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Image, Linking, Pressable, Text, View } from 'react-native';
 import {
-  BadgeCheck, CalendarClock, Check, CircleCheck, ClipboardCheck, Clock, Handshake, IndianRupee, Lock, PackageCheck, PenLine, Phone,
+  BadgeCheck, CalendarClock, Check, ChevronRight, ChevronUp, CircleCheck, ClipboardCheck, Clock, Handshake, IndianRupee, Lock, PackageCheck, PenLine, Phone,
   ShieldCheck, Store, Truck, UserPlus, Wallet, XCircle,
 } from 'lucide-react-native';
 import { rf } from '../../../utils/responsive';
@@ -92,6 +92,63 @@ function Track({ steps }) {
   });
 }
 
+// "19 Nov · 3:08 am" (same format as the Pickup Service history card).
+const shortWhen = (iso) => {
+  const d = iso ? new Date(iso) : null;
+  return d && !Number.isNaN(d.getTime())
+    ? `${d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })} · ${d.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' }).toLowerCase()}`
+    : '';
+};
+
+/** Pickup Status card: first → latest completed step, See All Updates expands the full track. */
+function PickupStatus({ o, steps }) {
+  const [all, setAll] = useState(false);
+  const done = steps.filter((st) => st.done ?? !!st.at);
+  const shown = done.length > 1 ? [done[0], done[done.length - 1]] : done;
+  const complete = !!o.pickup?.receivedAt;
+  return (
+    <View style={{ borderRadius: 16, borderWidth: 1, borderColor: C.border, backgroundColor: '#FFFFFF' }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingTop: 14 }}>
+        <Text style={{ flex: 1, fontSize: rf(15), fontWeight: '800', color: C.text }}>Pickup Status</Text>
+        <View style={{ backgroundColor: '#E5F3F5', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 3 }}>
+          <Text style={{ fontSize: rf(11.5), fontWeight: '800', color: C.teal }} numberOfLines={1}>{complete ? 'Completed' : 'In Progress'}</Text>
+        </View>
+      </View>
+      {o.orderNumber ? <Text style={{ fontSize: rf(11.5), color: C.muted, paddingHorizontal: 14, marginTop: 2 }} numberOfLines={1}>{`Order ${o.orderNumber}`}</Text> : null}
+      <View style={{ height: 1, backgroundColor: '#EEF0F2', marginHorizontal: 14, marginTop: 10 }} />
+      {shown.length ? (
+        <View style={{ flexDirection: 'row', paddingVertical: 14 }}>
+          {shown.map((st, i) => (
+            <View key={st.label} style={{ flex: 1, alignItems: 'center' }}>
+              <View style={{ width: '100%', flexDirection: 'row', alignItems: 'center' }}>
+                <View style={{ flex: 1, height: 3, backgroundColor: i === 0 ? 'transparent' : C.teal }} />
+                <View style={{ width: 26, height: 26, borderRadius: 13, backgroundColor: C.teal, alignItems: 'center', justifyContent: 'center' }}>
+                  <Check size={14} color="#FFFFFF" strokeWidth={3} />
+                </View>
+                <View style={{ flex: 1, height: 3, backgroundColor: i === shown.length - 1 ? 'transparent' : C.teal }} />
+              </View>
+              <Text style={{ fontSize: rf(12), fontWeight: '800', color: C.text, marginTop: 8, textAlign: 'center', paddingHorizontal: 4 }} numberOfLines={2}>{st.label}</Text>
+              {st.at ? <Text style={{ fontSize: rf(10.5), color: C.muted, marginTop: 2 }}>{shortWhen(st.at)}</Text> : null}
+            </View>
+          ))}
+        </View>
+      ) : (
+        <Text style={{ fontSize: rf(12), color: C.muted, padding: 14 }}>Waiting for the employee to accept.</Text>
+      )}
+      <View style={{ height: 1, backgroundColor: '#EEF0F2', marginHorizontal: 14 }} />
+      {all ? <View style={{ paddingHorizontal: 14, paddingTop: 12 }}><Track steps={steps} /></View> : null}
+      <Pressable onPress={() => setAll((v) => !v)} accessibilityRole="button" accessibilityState={{ expanded: all }}
+        style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 12 }}>
+        <View style={{ flex: 1 }}>
+          <Text style={{ fontSize: rf(13), fontWeight: '800', color: C.text }}>{all ? 'Show Less' : 'See All Updates'}</Text>
+          {all ? null : <Text style={{ fontSize: rf(11), color: C.muted, marginTop: 1 }}>{`${done.length} completed update${done.length === 1 ? '' : 's'}`}</Text>}
+        </View>
+        {all ? <ChevronUp size={18} color={C.text} /> : <ChevronRight size={18} color={C.text} />}
+      </Pressable>
+    </View>
+  );
+}
+
 const Locked = ({ text }) => (
   <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: C.field, borderRadius: 12, padding: 12 }}>
     <Lock size={16} color={C.muted} />
@@ -152,7 +209,7 @@ export default function PurchaseWorkflow({ o, busy, onAction, onOpenPhoto }) {
             </View>
           ) : null}
           {!visit && (pk.assignedAt || received) ? (
-            <Track steps={[
+            <PickupStatus o={o} steps={[
               ...pickupSteps(o).map((st) => ({ label: st.title, at: st.at, done: st.done })),
               { label: 'Picked up', at: pk.pickedUpAt },
               { label: 'Handed over at shop', at: pk.handedOverAt || pk.receivedAt },
