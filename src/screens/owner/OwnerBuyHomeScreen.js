@@ -558,18 +558,25 @@ export default function OwnerBuyHomeScreen({ navigation }) {
             {/* Summary: New Requests · Active Orders · Completed Today (live counts) */}
             <View style={{ flexDirection: 'row', paddingHorizontal: PAD, marginTop: 16 }}>
               {[
-                { key: 'req', Icon: MessageSquareText, tint: TEAL, bg: '#EAF6FB', value: newRequests, label: 'New Requests', go: () => navigation.navigate('OwnerSellRequests') },
-                { key: 'act', Icon: ShoppingCart, tint: '#E08A00', bg: '#FFF6E6', value: activeOrders, label: 'Active Orders', go: () => navigation.navigate('BuyOrders') },
-                { key: 'done', Icon: CheckCircle2, tint: '#16A34A', bg: '#EAF8EE', value: doneToday, label: 'Completed Today', go: () => navigation.navigate('BuyOrders') },
+                { key: 'req', Icon: MessageSquareText, tint: TEAL, value: newRequests, label: 'New Requests', caption: 'Customer leads', go: () => navigation.navigate('OwnerSellRequests') },
+                { key: 'act', Icon: ShoppingCart, tint: '#E08A00', value: activeOrders, label: 'Active Orders', caption: 'In progress', go: () => navigation.navigate('BuyOrders') },
+                { key: 'done', Icon: CheckCircle2, tint: '#16A34A', value: doneToday, label: 'Completed', caption: 'Today', go: () => navigation.navigate('BuyOrders') },
               ].map((s, i) => (
-                <Pressable key={s.key} onPress={s.go} accessibilityRole="button" accessibilityLabel={`${s.label}: ${s.value}`} className="active:opacity-80"
-                  style={{ flex: 1, marginLeft: i ? 8 : 0, backgroundColor: s.bg, borderRadius: 16, borderWidth: 1, borderColor: '#FFFFFF', paddingHorizontal: 10, paddingVertical: 14, ...cardShadow }}>
+                // Exact Home overview card: white card, colour only in the faint border/shadow and the round icon.
+                <Pressable key={s.key} onPress={s.go} accessibilityRole="button" accessibilityLabel={`${s.label}: ${s.value}`} className="active:opacity-70"
+                  style={{ flex: 1, marginLeft: i ? 8 : 0, height: 70, backgroundColor: '#FFFFFF', borderRadius: 16, borderWidth: 1, borderColor: `${s.tint}29`,
+                    shadowColor: s.tint, shadowOpacity: 0.12, shadowRadius: 6, shadowOffset: { width: 0, height: 2 }, elevation: 2,
+                    paddingHorizontal: 9, paddingVertical: 6, justifyContent: 'space-between' }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                    <s.Icon size={compact ? 18 : 22} color={s.tint} strokeWidth={2.2} />
-                    <Text numberOfLines={1} style={{ flex: 1, marginLeft: 8, fontSize: rf(compact ? 17 : 20), fontWeight: '800', color: INK }}>{loading ? '–' : s.value}</Text>
-                    <ChevronRight size={16} color={TEAL} />
+                    <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8} style={{ flex: 1, minWidth: 0, marginRight: 4, fontSize: compact ? 10 : 11, fontWeight: '700', color: '#111111' }}>{s.label}</Text>
+                    <View style={{ width: compact ? 22 : 24, height: compact ? 22 : 24, borderRadius: 12, backgroundColor: s.tint, alignItems: 'center', justifyContent: 'center' }}>
+                      <s.Icon size={compact ? 12 : 13} color="#FFFFFF" strokeWidth={2.2} />
+                    </View>
                   </View>
-                  <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8} style={{ marginTop: 6, fontSize: rf(11.5), color: '#374151' }}>{s.label}</Text>
+                  <View>
+                    <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7} style={{ fontSize: compact ? 16 : 18, lineHeight: compact ? 20 : 22, fontWeight: '800', color: '#111111' }}>{loading ? '–' : s.value}</Text>
+                    <Text numberOfLines={1} style={{ fontSize: compact ? 9 : 9.5, color: '#6B7280', fontWeight: '500' }}>{s.caption}</Text>
+                  </View>
                 </Pressable>
               ))}
             </View>
