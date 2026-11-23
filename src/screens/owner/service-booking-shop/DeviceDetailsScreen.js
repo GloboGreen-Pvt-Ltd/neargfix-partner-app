@@ -69,6 +69,8 @@ const swatchFor = (name) => {
   const key = Object.keys(SWATCHES).find((k) => n.includes(k));
   return key ? SWATCHES[key] : '#D1D5DB';
 };
+// Model-number compare key: "V2648", "v 2648", "V-2648" → "V2648".
+const normCode = (v) => String(v || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
 const titleCase = (v) => String(v || '').toLowerCase().replace(/(^|[\s\-/(])([a-z0-9])/g, (_, s, c) => s + c.toUpperCase());
 
 // Working device → how much detail to capture before listing. Each type runs
@@ -195,6 +197,7 @@ export default function DeviceDetailsScreen({ navigation, route }) {
   // Editing an existing booking: pick its brand → model → colour / RAM /
   // storage / model number once each list has loaded. One-shot — any manual
   // change afterwards is left alone.
+  const pickedNumber = useRef(null); // model number the model was found by (search)
   const prefill = useRef(params.editMode ? {
     brandId: params.brandId || null,
     modelId: params.modelId || null,
@@ -255,7 +258,7 @@ export default function DeviceDetailsScreen({ navigation, route }) {
   useEffect(() => {
     setOptions(null); setColor(''); setVariantId(null); setRam(null); setStorage(null);
     setRamText(''); setStorageText(''); setSpecState(null);
-    setModelNumber(model?.id ? (parseModelNumbers(model.modelNumber)[0] || null) : null);
+    setModelNumber(model?.id ? (pickedNumber.current || parseModelNumbers(model.modelNumber)[0] || null) : null);
     if (!model) return undefined;
     // A typed (not-in-list) model has no catalogue entry — its colour / RAM /
     // storage are typed, so the full master lists aren't fetched or shown.
@@ -271,7 +274,9 @@ export default function DeviceDetailsScreen({ navigation, route }) {
         if (!alive) return;
         setOptions(o);
         const nums = o.modelNumbers?.length ? o.modelNumbers : parseModelNumbers(model.modelNumber);
-        setModelNumber((prev) => (prev && nums.includes(prev) ? prev : (nums[0] || null)));
+        const wanted = pickedNumber.current && nums.find((x) => normCode(x) === normCode(pickedNumber.current));
+        pickedNumber.current = null;
+        setModelNumber((prev) => (wanted || (prev && nums.includes(prev) ? prev : (nums[0] || null))));
         // Edit: the booking's own colour / RAM + storage / model number.
         const pf = prefill.current;
         if (pf && (pf.color || pf.ramOptionId || pf.storageOptionId || pf.modelNumber)) {
@@ -296,12 +301,19 @@ export default function DeviceDetailsScreen({ navigation, route }) {
     return series.filter((s) => ids.has(s.id));
   }, [series, models]);
 
-  // Model listing: the series chip narrows it; a search spans every series.
+  // Model listing: the series chip narrows it; a search spans every series and
+  // matches the model name OR any of its model numbers (e.g. "v2648" → Vivo V80).
+  const numberHit = (m, needle) => {
+    const n = normCode(needle);
+    if (n.length < 3) return null;
+    const nums = [...parseModelNumbers(m.modelNumber), ...(m.modelNumbers || []), m.modelCode].filter(Boolean);
+    return nums.find((x) => normCode(x).includes(n)) || null;
+  };
   const listModels = useMemo(() => {
     const needle = q.trim().toLowerCase();
-    if (needle) return models.filter((m) => String(m.name || '').toLowerCase().includes(needle));
+    if (needle) return models.filter((m) => String(m.name || '').toLowerCase().includes(needle) || numberHit(m, needle));
     return seriesId ? models.filter((m) => m.seriesId === seriesId) : models;
-  }, [models, seriesId, q]);
+  }, [models, seriesId, q]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const isCustomModel = !!model && !model.id;
   const colorsList = options ? (options.colors?.length ? options.colors : options.allColors || []) : [];
@@ -314,6 +326,8 @@ export default function DeviceDetailsScreen({ navigation, route }) {
   const seriesName = model?.seriesId ? series.find((s) => s.id === model.seriesId)?.name : null;
 
   const pickModel = (m) => {
+    // Found by its model number: keep that exact number selected once the options load.
+    pickedNumber.current = q.trim() && m?.id ? numberHit(m, q.trim()) : null;
     setModel(m);
     if (m?.seriesId) setSeriesId((cur) => (cur && cur !== m.seriesId ? '' : cur));
     setQ('');
@@ -675,7 +689,7 @@ export default function DeviceDetailsScreen({ navigation, route }) {
                         <TextInput
                           value={q}
                           onChangeText={(v) => { setQ(v); setModelLimit(24); }}
-                          placeholder="Search model"
+                          placeholder="Search model or model number"
                           placeholderTextColor={PLACEHOLDER}
                           cursorColor={ACCENT}
                           returnKeyType="search"
@@ -702,7 +716,8 @@ export default function DeviceDetailsScreen({ navigation, route }) {
                       {listModels.slice(0, modelLimit).map((m) => (
                         <View key={m.id} style={{ width: tilePct(modelCols), padding: 4 }}>
                           <GridTile
-                            label={m.name}
+                            label={q.trim() && !String(m.name || '').toLowerCase().includes(q.trim().toLowerCase()) && numberHit(m, q.trim())
+                              ? `${m.name} (${numberHit(m, q.trim())})` : m.name}
                             image={resolveDeviceImageSource({ url: m.imageUrl, base64: m.imageBase64 })}
                             imageSize={60}
                             imageWidth={64}
