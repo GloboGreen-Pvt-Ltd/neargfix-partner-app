@@ -126,6 +126,7 @@ export function LeadCard({ l, onPress, tag, navigation, quoteStatus, purchase })
 //   accepted or purchase running · Closed = declined / expired / withdrawn,
 //   or purchase completed / cancelled.
 const REQ_TABS = [
+  { key: 'ALL', label: 'All' },
   { key: 'NEW', label: 'New' },
   { key: 'QUOTED', label: 'Quoted' },
   { key: 'ACCEPTED', label: 'Accepted' },
@@ -261,10 +262,10 @@ export default function BuyLeadsScreen({ navigation }) {
   const needle = q.trim().toLowerCase();
   const searched = useMemo(() => rows.filter((l) => !needle || [l.productName, l.city, l.description, l.condition].some((v) => String(v || '').toLowerCase().includes(needle))), [rows, needle]);
   const shown = useMemo(
-    () => searched.filter((l) => bucketOf(l) === tab).sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)),
+    () => searched.filter((l) => tab === 'ALL' || bucketOf(l) === tab).sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)),
     [searched, bucketOf, tab],
   );
-  const countOf = (k) => searched.filter((l) => bucketOf(l) === k).length;
+  const countOf = (k) => (k === 'ALL' ? searched.length : searched.filter((l) => bucketOf(l) === k).length);
 
   const right = (
     <View style={{ flexDirection: 'row', alignItems: 'center' }}>
@@ -300,7 +301,7 @@ export default function BuyLeadsScreen({ navigation }) {
         contentContainerStyle={{ paddingBottom: 30 }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[C.teal]} tintColor={C.teal} />}
         ListEmptyComponent={loading ? <ActivityIndicator color={C.teal} style={{ marginTop: 30 }} /> : (
-          <EmptyBox title={needle ? 'No matching requests' : `No ${REQ_BADGE[tab].text.toLowerCase()} requests`} sub="Customers near your shop who want to sell a device appear here." />
+          <EmptyBox title={needle ? 'No matching requests' : tab === 'ALL' ? 'No requests yet' : `No ${REQ_BADGE[tab].text.toLowerCase()} requests`} sub="Customers near your shop who want to sell a device appear here." />
         )}
         renderItem={({ item }) => (
           <RequestCard l={item} bucket={bucketOf(item)} navigation={navigation} quoteStatus={quotes[String(item.id)]?.quotationStatus} purchase={buys[String(item.id)]} />
