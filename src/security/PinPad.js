@@ -16,7 +16,7 @@ export function useKeyboardHeight() {
 
 export const C = { bg: '#FFFFFF', primary: '#035C6C', border: '#E5E7EB', text: '#1F2937', muted: '#6B7280', error: '#DC2626', tint: '#E6F2F4' };
 
-export default function PinPad({ title, subtitle, error, busy, onComplete, onBiometric, resetKey, footer, systemKeyboard }) {
+export default function PinPad({ title, subtitle, error, busy, onComplete, onBiometric, resetKey, footer, systemKeyboard, hideIcon }) {
   const [pin, setPin] = useState('');
   const inputRef = useRef(null);
   useEffect(() => { setPin(''); if (systemKeyboard) setTimeout(() => { inputRef.current?.blur(); inputRef.current?.focus(); }, 300); }, [resetKey, error, systemKeyboard]);
@@ -56,12 +56,14 @@ export default function PinPad({ title, subtitle, error, busy, onComplete, onBio
 
   return (
     <View style={{ alignItems: 'center', width: '100%' }}>
-      <View style={{ width: 52, height: 52, borderRadius: 26, backgroundColor: C.tint, alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
-        <Ionicons name="lock-closed" size={24} color={C.primary} />
-      </View>
+      {hideIcon ? null : (
+        <View style={{ width: 52, height: 52, borderRadius: 26, backgroundColor: C.tint, alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
+          <Ionicons name="lock-closed" size={24} color={C.primary} />
+        </View>
+      )}
       {title ? <Text style={{ fontSize: 19, fontWeight: '800', color: C.text }}>{title}</Text> : null}
       {subtitle ? <Text style={{ fontSize: 13, color: C.muted, marginTop: 4, textAlign: 'center' }}>{subtitle}</Text> : null}
-      <View style={{ flexDirection: 'row', marginTop: 22 }}>
+      <View style={{ flexDirection: 'row', marginTop: 22, alignSelf: 'stretch', justifyContent: 'center' }}>
         {[0, 1, 2, 3, 4, 5].map((i) => {
           const filled = i < pin.length;
           const active = i === pin.length && !busy;
@@ -69,7 +71,7 @@ export default function PinPad({ title, subtitle, error, busy, onComplete, onBio
             <View
               key={i}
               style={{
-                width: systemKeyboard ? 46 : 40, height: systemKeyboard ? 54 : 46, borderRadius: 12, marginHorizontal: systemKeyboard ? 5 : 4, alignItems: 'center', justifyContent: 'center',
+                flex: 1, maxWidth: systemKeyboard ? 46 : 40, height: systemKeyboard ? 52 : 46, borderRadius: 12, marginHorizontal: 4, alignItems: 'center', justifyContent: 'center',
                 borderWidth: active || filled || error ? 1.5 : 1, borderColor: error ? C.error : active || filled ? C.primary : C.border,
                 backgroundColor: filled ? C.tint : C.bg,
               }}

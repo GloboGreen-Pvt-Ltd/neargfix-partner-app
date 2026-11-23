@@ -65,6 +65,8 @@ export const verifyMpin = (pin) => authApi.post('/auth/security/mpin/verify', { 
 export const resetPin = (type, { otpToken, newPin, verificationMethod }) =>
   authApi.post(`/auth/security/pin/${type}/reset`, { body: { otpToken, newPin, verificationMethod } });
 
+// Owner / Shop sessions: the server identifies whose TPIN was typed (Owner, Shop
+// or an active same-shop Employee) — no manual selection, e.g. pickup → shop handover.
 export function authorizeTpin({ pin, action, method, path }) {
   return authApi.post('/auth/security/tpin/authorize', {
     body: {
