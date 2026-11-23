@@ -2,7 +2,7 @@
 // session is open: protected requests pause here, get a single-use
 // authorization, then continue. One sheet at a time (no duplicate modals).
 import React, { useEffect, useRef, useState } from 'react';
-import { KeyboardAvoidingView, Modal, Platform, Pressable, Text, View } from 'react-native';
+import { Keyboard, KeyboardAvoidingView, Modal, Platform, Pressable, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import PinPad, { C, useKeyboardHeight } from './PinPad';
@@ -62,7 +62,8 @@ export default function TpinSheet({ session, tpinSet, onTpinCreated }) {
   };
 
   return (
-    <Modal visible={!!req} transparent animationType="slide" onRequestClose={cancel}>
+    // Android Back while the keyboard is open only hides the keyboard — it must not cancel the TPIN request.
+    <Modal visible={!!req} transparent animationType="slide" onRequestClose={() => (kb ? Keyboard.dismiss() : cancel())}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(17,24,39,0.45)' }}>
         {/* Android: lift the sheet by the keyboard height so title, boxes and errors stay visible. */}
         <View style={{ backgroundColor: C.bg, borderTopLeftRadius: 16, borderTopRightRadius: 16, paddingHorizontal: 20, paddingTop: 10, paddingBottom: Platform.OS === 'android' && kb ? kb + 12 : 16 + insets.bottom, alignItems: 'center' }}>
