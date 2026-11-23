@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Image, Linking, Platform, Pressable, RefreshControl, ScrollView, Text, View, useWindowDimensions } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
-import { ArrowRight, Check, ChevronRight, ClipboardList, CircleCheck, Clock, Lock, Navigation, Phone, Send, Store, Truck, XCircle } from 'lucide-react-native';
+import { ArrowRight, Check, ChevronRight, ClipboardList, CircleCheck, Clock, Lock, Navigation, Phone, Send, ShoppingCart, Store, Truck, XCircle } from 'lucide-react-native';
 import { getListingOrigin, listingConditionLabel, listingCustomerName } from '../../../api/nearbyListings';
 import { getMyLeadQuote, getShopPurchase, submitLeadQuote } from '../../../api/orders';
 import { showToast } from '../../../components/Toast';
@@ -13,6 +13,7 @@ import { BellButton, savePrevQuote, scheduleLabel, timeAgo } from './buyKit';
 import { leadDistance, leadPrice } from './BuyLeadsScreen';
 import { purchaseRoute, stepParams, up } from './purchaseKit';
 import { purchaseHero } from './PurchaseWorkflow';
+import { addLeadToCart, inLeadCart, removeLeadFromCart } from './leadCart';
 
 // Page 4 — a customer's sell request: device, condition, location; the shop's
 // quote and fulfilment choice (POST /sell-orders/listing-quotations). The
@@ -97,6 +98,13 @@ export default function BuyLeadDetailScreen({ navigation, route }) {
   const [loadError, setLoadError] = useState(null);
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [inCart, setInCart] = useState(false);
+  useEffect(() => { inLeadCart(l.id).then(setInCart).catch(() => {}); }, [l.id]);
+  const toggleCart = async () => {
+    const next = inCart ? await removeLeadFromCart(l.id) : await addLeadToCart(l);
+    setInCart(next);
+    showToast({ type: 'success', title: next ? 'Added to cart' : 'Removed from cart', message: next ? 'Find it in Requests → Cart.' : undefined });
+  };
   const lock = useRef(false);
   const [refreshing, setRefreshing] = useState(false);
   const onRefresh = async () => { setRefreshing(true); try { await Promise.all([load(), getListingOrigin().then(setOrigin).catch(() => {})]); } finally { setRefreshing(false); } };
@@ -341,7 +349,11 @@ export default function BuyLeadDetailScreen({ navigation, route }) {
         ) : sentOpen ? (
           <PrimaryButton title="View Quotation Status" icon={ArrowRight} onPress={() => openQuote(mine)} style={{ marginTop: 16 }} />
         ) : !closed && !blocked ? (
-          <PrimaryButton title="Send Quotation" icon={Send} onPress={() => navigation.push('BuyLeadDetail', { lead: l, mode: 'quote' })} style={{ marginTop: 16 }} />
+          // Add to Cart = shortlist on this phone (Requests → Cart); not the product cart.
+          <View style={{ flexDirection: 'row', marginTop: 16, gap: 10 }}>
+            <PrimaryButton title={inCart ? 'In Cart' : 'Add to Cart'} icon={inCart ? Check : ShoppingCart} variant="outline" onPress={toggleCart} style={{ flex: 1 }} />
+            <PrimaryButton title="Send Quotation" icon={Send} onPress={() => navigation.push('BuyLeadDetail', { lead: l, mode: 'quote' })} style={{ flex: 1.3 }} />
+          </View>
         ) : null
       ) : null}
 

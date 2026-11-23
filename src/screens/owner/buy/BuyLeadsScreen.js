@@ -8,6 +8,7 @@ import { showToast } from '../../../components/Toast';
 import { rf } from '../../../utils/responsive';
 import { C, EmptyBox, ErrorBox, SearchInput, SellScreen, Thumb, money } from '../sell/kit';
 import { BellButton } from './buyKit';
+import { listLeadCart } from './leadCart';
 
 // Requests — customers nearby who want to sell a device (GET /marketplace/buy/nearby,
 // sellerType CUSTOMER). Tabs: New · Quoted · Accepted · Closed (see requestBucket).
@@ -131,6 +132,7 @@ const REQ_TABS = [
   { key: 'QUOTED', label: 'Quoted' },
   { key: 'ACCEPTED', label: 'Accepted' },
   { key: 'CLOSED', label: 'Closed' },
+  { key: 'CART', label: 'Cart' }, // leads saved on this phone (Product Details → Add to Cart)
 ];
 const REQ_BADGE = {
   NEW: { text: 'New', bg: '#E0F2FE', fg: '#0369A1' },
@@ -239,6 +241,7 @@ export default function BuyLeadsScreen({ navigation }) {
   const [searchOpen, setSearchOpen] = useState(false);
   const [quotes, setQuotes] = useState({}); // listingId → my quote row (quotationStatus)
   const [buys, setBuys] = useState({}); // listingId → purchase (exists once accepted)
+  const [cartIds, setCartIds] = useState(new Set()); // leads saved on this phone
 
   const load = useCallback(async () => {
     try {
@@ -255,17 +258,19 @@ export default function BuyLeadsScreen({ navigation }) {
       setLoading(false);
     }
   }, []);
-  useFocusEffect(useCallback(() => { load(); }, [load]));
+  useFocusEffect(useCallback(() => { load(); listLeadCart().then((c) => setCartIds(new Set(c.map((x) => String(x.id))))); }, [load]));
   const onRefresh = async () => { setRefreshing(true); await load(); setRefreshing(false); };
 
   const bucketOf = useCallback((l) => requestBucket(quotes[String(l.id)]?.quotationStatus, buys[String(l.id)]), [quotes, buys]);
   const needle = q.trim().toLowerCase();
   const searched = useMemo(() => rows.filter((l) => !needle || [l.productName, l.city, l.description, l.condition].some((v) => String(v || '').toLowerCase().includes(needle))), [rows, needle]);
   const shown = useMemo(
-    () => searched.filter((l) => tab === 'ALL' || bucketOf(l) === tab).sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)),
-    [searched, bucketOf, tab],
+    () => searched.filter((l) => tab === 'ALL' || (tab === 'CART' ? cartIds.has(String(l.id)) : bucketOf(l) === tab)).sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)),
+    [searched, bucketOf, tab, cartIds],
   );
-  const countOf = (k) => (k === 'ALL' ? searched.length : searched.filter((l) => bucketOf(l) === k).length);
+  const countOf = (k) => (k === 'ALL' ? searched.length
+    : k === 'CART' ? searched.filter((l) => cartIds.has(String(l.id))).length
+      : searched.filter((l) => bucketOf(l) === k).length);
 
   const right = (
     <View style={{ flexDirection: 'row', alignItems: 'center' }}>
@@ -301,7 +306,7 @@ export default function BuyLeadsScreen({ navigation }) {
         contentContainerStyle={{ paddingBottom: 30 }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[C.teal]} tintColor={C.teal} />}
         ListEmptyComponent={loading ? <ActivityIndicator color={C.teal} style={{ marginTop: 30 }} /> : (
-          <EmptyBox title={needle ? 'No matching requests' : tab === 'ALL' ? 'No requests yet' : `No ${REQ_BADGE[tab].text.toLowerCase()} requests`} sub="Customers near your shop who want to sell a device appear here." />
+          <EmptyBox title={needle ? 'No matching requests' : tab === 'ALL' ? 'No requests yet' : tab === 'CART' ? 'Your cart is empty' : `No ${REQ_BADGE[tab].text.toLowerCase()} requests`} sub="Customers near your shop who want to sell a device appear here." />
         )}
         renderItem={({ item }) => (
           <RequestCard l={item} bucket={bucketOf(item)} navigation={navigation} quoteStatus={quotes[String(item.id)]?.quotationStatus} purchase={buys[String(item.id)]} />
