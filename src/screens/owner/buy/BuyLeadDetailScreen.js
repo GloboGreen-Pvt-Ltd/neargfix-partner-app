@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Image, Linking, Platform, Pressable, RefreshControl, ScrollView, Text, View, useWindowDimensions } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
-import { ArrowRight, Check, ChevronRight, ClipboardList, CircleCheck, Clock, Lock, Navigation, Phone, Send, ShoppingCart, Store, Truck, XCircle } from 'lucide-react-native';
+import { ArrowRight, Check, ClipboardList, CircleCheck, Clock, Lock, Navigation, Phone, Send, ShoppingCart, Store, Truck, XCircle } from 'lucide-react-native';
 import { getListingOrigin, listingConditionLabel, listingCustomerName } from '../../../api/nearbyListings';
 import { getMyLeadQuote, getShopPurchase, submitLeadQuote } from '../../../api/orders';
 import { showToast } from '../../../components/Toast';
@@ -11,7 +11,7 @@ import {
 } from '../sell/kit';
 import { BellButton, savePrevQuote, scheduleLabel, timeAgo } from './buyKit';
 import { leadDistance, leadPrice } from './BuyLeadsScreen';
-import { purchaseRoute, stepParams, up } from './purchaseKit';
+import { up } from './purchaseKit';
 import { purchaseHero } from './PurchaseWorkflow';
 import { addLeadToCart, inLeadCart, removeLeadFromCart } from './leadCart';
 
@@ -188,41 +188,12 @@ export default function BuyLeadDetailScreen({ navigation, route }) {
   const accepted = qStatus === 'ACCEPTED';
   const visit = fulfil === 'SHOP_VISIT';
   const orderId = mine?.sellOrderId || purchase?.id || null;
-  const leadRef = purchase?.orderNumber || '';
   const ps = up(purchase?.status);
   // Shop visit not under way yet → Schedule Shop Visit page; otherwise Order Details.
   const manage = () => (visit && (!ps || ['SELL_CONFIRMED', 'PICKUP_SCHEDULED', 'PICKUP_ASSIGNED'].includes(ps))
     ? navigation.navigate('BuyScheduleVisit', { id: orderId, order: purchase || undefined })
     : navigation.navigate('BuyOrderDetail', { id: orderId, kind: 'LEAD', order: purchase || undefined }));
   const pk = purchase?.pickup || {};
-  const pay = purchase?.payment || {};
-  const rv = up(purchase?.revision?.status);
-  const priceDone = ['PRICE_CONFIRMED', 'PAYMENT_PENDING', 'PAID', 'COMPLETED'].includes(ps) || !!pay.recordedAt || rv === 'APPROVED' || rv === 'SHOP_CONFIRMED';
-  // Real server state: pickup = doorstep inspection after the OTP, employee payment, then the shop handover.
-  const steps = !accepted ? [] : [
-    { key: 'schedule', label: visit ? 'Schedule Shop Visit' : 'Schedule Pickup', done: !!purchase?.pickupDate, sub: scheduleLabel(purchase?.pickupDate, purchase?.pickupSlotStart) },
-    !visit && { key: 'assign', label: 'Assign Employee', done: !!(pk.personName || pk.assignedAt), sub: pk.personName ? `${pk.personName}${pk.acceptedAt ? ' · Accepted' : ''}` : null },
-    visit
-      ? { key: 'inspect', label: 'Inspection', done: !!purchase?.inspection }
-      : { key: 'inspect', label: 'Doorstep Inspection', done: !!pk.inspectedAt, sub: pk.otpVerifiedAt ? 'OTP verified' : pk.startedAt ? 'Employee on the way' : null },
-    { key: 'price', label: 'Final Price', done: priceDone, sub: rv === 'SHOP_PENDING' || (ps === 'OUT_FOR_PICKUP' && pk.inspectedAt && !rv) ? 'Needs your approval'
-      : rv === 'REINSPECT' ? 'Re-check requested'
-        : rv === 'NEGOTIATION' || rv === 'REJECTED' ? 'Customer wants another price'
-          : rv === 'SHOP_APPROVED' || ps === 'PRICE_REVISION_PENDING' ? 'Waiting for customer' : null },
-    { key: 'payment', label: 'Payment', done: visit ? up(pay.status) === 'PAID' || ['PAID', 'COMPLETED'].includes(ps) : !!pay.recordedAt, sub: pay.recordedAt && up(pay.status) !== 'PAID' ? 'Awaiting customer confirmation' : null },
-    !visit && { key: 'handover', label: 'Shop Handover', done: !!pk.receivedAt },
-    { key: 'complete', label: 'Completed', done: ps === 'COMPLETED' },
-  ].filter(Boolean);
-  const lastDone = steps.reduce((n, st, i) => (st.done ? i : n), -1);
-  const current = ps === 'CANCELLED' ? -1 : steps.findIndex((st, i) => i > lastDone && !st.done);
-  // The current step opens the page the server status belongs on.
-  const openStep = (st) => {
-    if (!orderId) return;
-    if (st.key === 'schedule') { manage(); return; }
-    if (st.key === 'assign') { navigation.navigate('BuyAssignPickup', { id: orderId, leadRef, order: purchase || undefined }); return; }
-    const name = purchaseRoute(purchase?.status, purchase || undefined);
-    navigation.navigate(name, stepParams(name, orderId, leadRef, purchase || undefined));
-  };
 
   const price = leadPrice(l);
   const dist = leadDistance(l, origin);
