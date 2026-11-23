@@ -41,8 +41,17 @@ export default function ScheduleSheet({ visible, title, initialDate, initialStar
   }, [visible]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const isToday = date === ymd(days[0]);
-  const nowHour = new Date().getHours();
-  const past = (h) => isToday && h <= nowHour;
+  const nowD = new Date();
+  const nowHour = nowD.getHours();
+  const nowMin = nowHour * 60 + nowD.getMinutes();
+  // Today: a slot stays until 15 min before it ends (the current hour, e.g. 5–6 PM at 5:29, is offered).
+  const past = (h) => isToday && (h + 1) * 60 - 15 <= nowMin;
+  // Current hour: the server refuses a start in the past, so start = now rounded up to 5 min (end stays on the hour).
+  const startOfSlot = (h) => {
+    if (!isToday || h !== nowHour) return hh(h);
+    const m = Math.min(55, Math.ceil((nowD.getMinutes() + 1) / 5) * 5);
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+  };
   useEffect(() => { if (hour != null && past(hour)) setHour(null); }, [date]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const save = async () => {
@@ -52,7 +61,7 @@ export default function ScheduleSheet({ visible, title, initialDate, initialStar
     setBusy(true);
     setError(null);
     try {
-      await onSubmit({ pickupDate: date, slotStart: hh(hour), slotEnd: hh(hour + 1) });
+      await onSubmit({ pickupDate: date, slotStart: startOfSlot(hour), slotEnd: hh(hour + 1) });
     } catch (e) {
       setError(e);
     } finally {
