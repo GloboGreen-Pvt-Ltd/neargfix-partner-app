@@ -103,7 +103,8 @@ const specLine = (it) => String(it?.description || '').split(/\s*[·|/,]\s*/).ma
 // uses the `active:` className.
 // Horizontal category menu item: round image (admin category-menu image or
 // the category's own image), the line icon when there is none.
-function RailItem({ label, Icon, active, onPress, badge }) {
+function RailItem({ label, Icon, image, active, onPress, badge }) {
+  const [broken, setBroken] = useState(false);
   return (
     <Pressable
       onPress={onPress}
@@ -119,8 +120,10 @@ function RailItem({ label, Icon, active, onPress, badge }) {
         backgroundColor: '#FAFBFD', borderWidth: active ? 2 : 3, borderColor: active ? TEAL : '#FFFFFF',
         shadowColor: TEAL, shadowOpacity: 0.10, shadowRadius: 10, shadowOffset: { width: 0, height: 3 }, elevation: 3,
       }}>
-        {/* Line icon only (no category images), as on Home → Services. */}
-        <Icon size={22} color="#17191B" strokeWidth={1.5} />
+        {/* Category image (admin menu / category image); line icon when there is none. */}
+        {image && !broken
+          ? <Image source={{ uri: image }} style={{ width: 38, height: 38 }} resizeMode="contain" onError={() => setBroken(true)} />
+          : <Icon size={22} color="#17191B" strokeWidth={1.5} />}
         {badge != null ? (
           <View style={{ position: 'absolute', top: -6, right: -6, minWidth: 20, height: 20, borderRadius: 10, paddingHorizontal: 5, backgroundColor: TEAL, borderWidth: 2, borderColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' }}>
             <Text style={{ fontSize: 10, fontWeight: '800', color: '#FFFFFF' }}>{badge}</Text>
