@@ -278,17 +278,11 @@ export default function OwnerBuyListingDetailsScreen({ navigation, route }) {
       <OfferSheet visible={offerOpen} listPrice={listing.price} onClose={() => setOfferOpen(false)} onSubmit={submitOffer} />
       <View style={[styles.bottomBar, { paddingHorizontal: barPadH, paddingBottom: Math.max(insets.bottom, 10) + 8 }]}>
         {isProduct ? (
-          <>
-            {/* Negotiate first: a purchase offer to the selling shop (Quotations). */}
-            <TouchableOpacity style={styles.outlineBtn} onPress={() => setOfferOpen(true)} activeOpacity={0.8} accessibilityRole="button">
-              <Ionicons name="pricetag-outline" size={16} color={PALETTE.primaryDark} />
-              <Text style={styles.outlineText} numberOfLines={1}>Make an Offer</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.primaryBtn} onPress={onAddToCart} disabled={adding} activeOpacity={0.85}>
-              <Ionicons name="cart-outline" size={17} color="#FFFFFF" />
-              <Text style={styles.primaryText} numberOfLines={1}>{adding ? 'Adding…' : 'Add to Cart'}</Text>
-            </TouchableOpacity>
-          </>
+          // Fixed-price shop product: Add to Cart only (existing cart API).
+          <TouchableOpacity style={styles.primaryBtn} onPress={onAddToCart} disabled={adding} activeOpacity={0.85} accessibilityRole="button">
+            <Ionicons name="cart-outline" size={17} color="#FFFFFF" />
+            <Text style={styles.primaryText} numberOfLines={1}>{adding ? 'Adding…' : 'Add to Cart'}</Text>
+          </TouchableOpacity>
         ) : (
           <>
             <TouchableOpacity style={styles.outlineBtn} onPress={callSeller} activeOpacity={0.8} accessibilityRole="button">

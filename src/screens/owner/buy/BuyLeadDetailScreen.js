@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Image, Linking, Platform, Pressable, RefreshControl, ScrollView, Text, View, useWindowDimensions } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
-import { ArrowRight, Check, ChevronRight, CircleCheck, Clock, Lock, Navigation, Phone, Send, Store, Truck, XCircle } from 'lucide-react-native';
+import { ArrowRight, Check, ChevronRight, ClipboardList, CircleCheck, Clock, Lock, Navigation, Phone, Send, Store, Truck, XCircle } from 'lucide-react-native';
 import { getListingOrigin, listingConditionLabel, listingCustomerName } from '../../../api/nearbyListings';
 import { getMyLeadQuote, getShopPurchase, submitLeadQuote } from '../../../api/orders';
 import { showToast } from '../../../components/Toast';
@@ -227,12 +227,16 @@ export default function BuyLeadDetailScreen({ navigation, route }) {
     Linking.openURL(url).catch(() => {});
   };
   // Seller contact — whichever phone field the listing carries.
-  const sellerPhone = l.sellerPhone || l.customerPhone || l.phone || l.mobile || l.contactPhone || l.seller?.phone || l.customer?.phone || null;
+  // Accepted lead: the purchase order carries the real customer (name, phone, pickup address).
+  const buyer = purchase?.address || {};
+  const sellerPlace = buyer.line || place;
+  const sellerPhone = buyer.contactPhone || purchase?.customer?.phone || l.sellerPhone || l.customerPhone || l.phone || l.mobile || l.contactPhone || l.seller?.phone || l.customer?.phone || null;
   const callSeller = () => {
     const tel = String(sellerPhone || '').replace(/[^\d+]/g, '');
     if (tel) Linking.openURL(`tel:${tel}`).catch(() => showToast('This device cannot place calls.'));
   };
-  const sellerName = l.sellerType === 'CUSTOMER' ? listingCustomerName(l) : (l.shopName || 'Shop');
+  const sellerName = buyer.contactName || purchase?.customer?.name
+    || (l.sellerType === 'CUSTOMER' ? listingCustomerName(l) : (l.shopName || 'Shop'));
 
   const status = !q ? null
     : qStatus === 'ACCEPTED' ? { Icon: CircleCheck, title: 'Customer accepted your quote', fg: C.green, bg: C.greenBg }
@@ -293,8 +297,8 @@ export default function BuyLeadDetailScreen({ navigation, route }) {
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
             <View style={{ flex: 1, minWidth: 0 }}>
               <Text numberOfLines={1} style={{ fontSize: rf(14), fontWeight: '800', color: C.text }}>{sellerName}</Text>
-              <Text numberOfLines={1} style={{ fontSize: rf(11.5), color: C.muted, marginTop: 2 }}>
-                {[l.sellerType === 'CUSTOMER' ? 'Customer' : 'Shop', place].filter(Boolean).join(' · ')}
+              <Text numberOfLines={3} style={{ fontSize: rf(11.5), color: C.muted, marginTop: 2 }}>
+                {[l.sellerType === 'CUSTOMER' ? 'Customer' : 'Shop', sellerPlace].filter(Boolean).join(' · ')}
               </Text>
               {sellerPhone ? <Text style={{ fontSize: rf(12), color: C.text, marginTop: 2 }}>{sellerPhone}</Text> : null}
             </View>
@@ -329,41 +333,11 @@ export default function BuyLeadDetailScreen({ navigation, route }) {
         </Section>
       ) : null}
 
-      {accepted ? (
-        <Section title="Next Actions">
-          <Card>
-            {steps.map((st, i) => {
-              const now = i === current;
-              return (
-                <Pressable
-                  key={st.key}
-                  onPress={() => now && openStep(st)}
-                  disabled={!now || !orderId}
-                  accessibilityRole="button"
-                  accessibilityLabel={st.label}
-                  className="active:opacity-80"
-                  style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 10, borderBottomWidth: i === steps.length - 1 ? 0 : 1, borderBottomColor: '#F1F3F5' }}
-                >
-                  <View style={{ height: 22, width: 22, borderRadius: 11, alignItems: 'center', justifyContent: 'center', backgroundColor: st.done ? C.teal : '#FFFFFF', borderWidth: 2, borderColor: st.done || now ? C.teal : C.border }}>
-                    {st.done ? <Check size={12} color="#FFFFFF" strokeWidth={3} /> : null}
-                  </View>
-                  <View style={{ flex: 1, marginLeft: 10 }}>
-                    <Text style={{ fontSize: rf(13), fontWeight: '800', color: st.done || now ? C.text : C.muted }}>{st.label}</Text>
-                    {st.sub ? <Text style={{ fontSize: rf(11), color: C.muted, marginTop: 1 }}>{st.sub}</Text> : null}
-                  </View>
-                  {st.done ? <Text style={{ fontSize: rf(11), fontWeight: '700', color: C.green }}>Done</Text> : null}
-                </Pressable>
-              );
-            })}
-          </Card>
-        </Section>
-      ) : null}
-
       {loading ? <ActivityIndicator color={C.teal} style={{ marginTop: 16 }} /> : null}
 
       {mode === 'detail' && !loading ? (
         accepted ? (
-          <PrimaryButton title={visit ? 'Open Shop Visit' : 'Open Pickup'} icon={visit ? Store : Truck} onPress={manage} disabled={!orderId} style={{ marginTop: 16 }} />
+          <PrimaryButton title="Order Details" icon={ClipboardList} onPress={() => navigation.navigate('BuyOrderDetail', { id: orderId, kind: 'LEAD', order: purchase || undefined })} disabled={!orderId} style={{ marginTop: 16 }} />
         ) : sentOpen ? (
           <PrimaryButton title="View Quotation Status" icon={ArrowRight} onPress={() => openQuote(mine)} style={{ marginTop: 16 }} />
         ) : !closed && !blocked ? (

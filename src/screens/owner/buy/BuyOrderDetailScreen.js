@@ -16,6 +16,7 @@ import { orderItems, orderTitle } from './BuyOrdersScreen';
 import PurchaseFormSheet from './PurchaseFormSheet';
 import PurchaseWorkflow, { purchaseHero } from './PurchaseWorkflow';
 import ScheduleSheet from './ScheduleSheet';
+import HandoverSheet from './HandoverSheet';
 
 // Page 7 — one purchase order. kind LEAD: a device bought from a customer's
 // sell lead (GET /sell-orders/shop-purchases/{id}): Manage Pickup (assign an
@@ -112,6 +113,7 @@ export default function BuyOrderDetailScreen({ navigation, route }) {
   const [error, setError] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
   const [sheet, setSheet] = useState(false);
+  const [handover, setHandover] = useState(false);
   const [form, setForm] = useState(null); // 'revise' | 'payout' | 'cancel' | 'rejectRevision'
   const [busy, setBusy] = useState(null); // action key in flight
   const lock = useRef(false);
@@ -172,7 +174,7 @@ export default function BuyOrderDetailScreen({ navigation, route }) {
     else if (key === 'inspect') navigation.navigate('BuyInspection', { id, order: o });
     else if (key === 'track') navigation.navigate('BuyPickupTracking', { id, order: o });
     else if (key === 'review') navigation.navigate('BuyInspectionReview', { id, order: o });
-    else if (key === 'handover') navigation.navigate('BuyHandover', { id, order: o });
+    else if (key === 'handover') setHandover(true);
     else if (key === 'finalPrice') navigation.navigate('BuyFinalPrice', { id, order: o });
     else if (key === 'revise' || key === 'payout' || key === 'cancel' || key === 'rejectRevision') setForm(key);
     else if (key === 'approveRevision') {
@@ -312,6 +314,8 @@ export default function BuyOrderDetailScreen({ navigation, route }) {
       {v.readOnly ? (
         <ErrorBox tone="warning" message="Marking a marketplace purchase as received isn’t available on the server yet. The order updates here when the seller completes it." style={{ marginTop: 14 }} />
       ) : null}
+
+      <HandoverSheet visible={handover} o={o} onClose={() => setHandover(false)} onDone={(d) => { setHandover(false); if (d) setO(d); else load(); }} />
 
       <ScheduleSheet
         visible={sheet}

@@ -103,8 +103,7 @@ const specLine = (it) => String(it?.description || '').split(/\s*[·|/,]\s*/).ma
 // uses the `active:` className.
 // Horizontal category menu item: round image (admin category-menu image or
 // the category's own image), the line icon when there is none.
-function RailItem({ label, Icon, image, active, onPress }) {
-  const [broken, setBroken] = useState(false);
+function RailItem({ label, Icon, active, onPress, badge }) {
   return (
     <Pressable
       onPress={onPress}
@@ -114,15 +113,21 @@ function RailItem({ label, Icon, image, active, onPress }) {
       className="active:opacity-80"
       style={{ width: 72, alignItems: 'center', paddingVertical: 3 }}
     >
+      {/* Same tile as Home → Services: soft rounded square, white ring, soft shadow, thin dark glyph. */}
       <View style={{
-        width: 58, height: 58, borderRadius: 29, overflow: 'hidden', alignItems: 'center', justifyContent: 'center',
-        backgroundColor: active ? '#E5F3F5' : '#FFFFFF', borderWidth: active ? 2 : 1, borderColor: active ? TEAL : LINE,
+        width: 60, height: 60, borderRadius: 17, alignItems: 'center', justifyContent: 'center',
+        backgroundColor: '#FAFBFD', borderWidth: active ? 2 : 3, borderColor: active ? TEAL : '#FFFFFF',
+        shadowColor: TEAL, shadowOpacity: 0.10, shadowRadius: 10, shadowOffset: { width: 0, height: 3 }, elevation: 3,
       }}>
-        {image && !broken
-          ? <Image source={{ uri: image }} style={{ width: 46, height: 46 }} resizeMode="contain" onError={() => setBroken(true)} />
-          : <Icon size={24} color={TEAL} strokeWidth={1.8} />}
+        {/* Line icon only (no category images), as on Home → Services. */}
+        <Icon size={22} color="#17191B" strokeWidth={1.5} />
+        {badge != null ? (
+          <View style={{ position: 'absolute', top: -6, right: -6, minWidth: 20, height: 20, borderRadius: 10, paddingHorizontal: 5, backgroundColor: TEAL, borderWidth: 2, borderColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' }}>
+            <Text style={{ fontSize: 10, fontWeight: '800', color: '#FFFFFF' }}>{badge}</Text>
+          </View>
+        ) : null}
       </View>
-      <Text numberOfLines={1} style={{ marginTop: 5, fontSize: rf(11), textAlign: 'center', fontWeight: active ? '800' : '600', color: active ? TEAL : INK }}>
+      <Text numberOfLines={1} style={{ marginTop: 6, fontSize: rf(11.5), textAlign: 'center', fontWeight: active ? '700' : '500', color: '#1C3053', letterSpacing: -0.1 }}>
         {label}
       </Text>
     </Pressable>
@@ -212,14 +217,6 @@ function HomeLeadCard({ it, thumbUri, tag, accepted, purchase, navigation, onOpe
           <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 7 }}>
             {price ? <Text numberOfLines={1} style={{ fontSize: rf(compact ? 16 : 18), fontWeight: '800', color: TEAL }}>{price}</Text> : null}
             {!price ? <Text numberOfLines={1} style={{ fontSize: rf(12.5), fontWeight: '700', color: ORANGE }}>(Open for Quote)</Text> : null}
-            <View style={{ flex: 1 }} />
-            {(
-              <Pressable onPress={open} accessibilityRole="button" accessibilityLabel="View details" className="active:opacity-90"
-                style={{ flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-end', backgroundColor: TEAL, borderRadius: 999, paddingHorizontal: 9, paddingVertical: 4 }}>
-                <Text style={{ fontSize: rf(10.5), fontWeight: '700', color: '#FFFFFF' }}>View Details</Text>
-                <ArrowRight size={11} color="#FFFFFF" style={{ marginLeft: 3 }} />
-              </Pressable>
-            )}
           </View>
         </View>
       </Pressable>
@@ -558,21 +555,14 @@ export default function OwnerBuyHomeScreen({ navigation }) {
             )}
 
             {/* Summary: New Requests · Active Orders · Completed Today (live counts) */}
-            <View style={{ flexDirection: 'row', paddingHorizontal: PAD, marginTop: 16 }}>
+            {/* New Requests · Active Orders · Completed Today — Services-style icon tiles, live count as a badge. */}
+            <View style={{ flexDirection: 'row', paddingHorizontal: PAD - 4, marginTop: 16 }}>
               {[
-                { key: 'req', Icon: MessageSquareText, tint: TEAL, bg: '#EAF6FB', value: newRequests, label: 'New Requests', go: () => navigation.navigate('OwnerSellRequests') },
-                { key: 'act', Icon: ShoppingCart, tint: '#E08A00', bg: '#FFF6E6', value: activeOrders, label: 'Active Orders', go: () => navigation.navigate('BuyOrders') },
-                { key: 'done', Icon: CheckCircle2, tint: '#16A34A', bg: '#EAF8EE', value: doneToday, label: 'Completed Today', go: () => navigation.navigate('BuyOrders') },
-              ].map((s, i) => (
-                <Pressable key={s.key} onPress={s.go} accessibilityRole="button" accessibilityLabel={`${s.label}: ${s.value}`} className="active:opacity-80"
-                  style={{ flex: 1, marginLeft: i ? 8 : 0, backgroundColor: s.bg, borderRadius: 16, borderWidth: 1, borderColor: '#FFFFFF', paddingHorizontal: 10, paddingVertical: 14, ...cardShadow }}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                    <s.Icon size={compact ? 18 : 22} color={s.tint} strokeWidth={2.2} />
-                    <Text numberOfLines={1} style={{ flex: 1, marginLeft: 8, fontSize: rf(compact ? 17 : 20), fontWeight: '800', color: INK }}>{loading ? '–' : s.value}</Text>
-                    <ChevronRight size={16} color={TEAL} />
-                  </View>
-                  <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8} style={{ marginTop: 6, fontSize: rf(11.5), color: '#374151' }}>{s.label}</Text>
-                </Pressable>
+                { key: 'req', Icon: MessageSquareText, value: newRequests, label: 'New Requests', go: () => navigation.navigate('OwnerSellRequests') },
+                { key: 'act', Icon: ShoppingCart, value: activeOrders, label: 'Active Orders', go: () => navigation.navigate('BuyOrders') },
+                { key: 'done', Icon: CheckCircle2, value: doneToday, label: 'Completed', go: () => navigation.navigate('BuyOrders') },
+              ].map((s) => (
+                <RailItem key={s.key} label={s.label} Icon={s.Icon} badge={loading ? null : s.value} onPress={s.go} />
               ))}
             </View>
 
