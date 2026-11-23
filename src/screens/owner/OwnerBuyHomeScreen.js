@@ -555,14 +555,22 @@ export default function OwnerBuyHomeScreen({ navigation }) {
             )}
 
             {/* Summary: New Requests · Active Orders · Completed Today (live counts) */}
-            {/* New Requests · Active Orders · Completed Today — Services-style icon tiles, live count as a badge. */}
-            <View style={{ flexDirection: 'row', paddingHorizontal: PAD - 4, marginTop: 16 }}>
+            {/* Summary: New Requests · Active Orders · Completed Today (live counts) */}
+            <View style={{ flexDirection: 'row', paddingHorizontal: PAD, marginTop: 16 }}>
               {[
-                { key: 'req', Icon: MessageSquareText, value: newRequests, label: 'New Requests', go: () => navigation.navigate('OwnerSellRequests') },
-                { key: 'act', Icon: ShoppingCart, value: activeOrders, label: 'Active Orders', go: () => navigation.navigate('BuyOrders') },
-                { key: 'done', Icon: CheckCircle2, value: doneToday, label: 'Completed', go: () => navigation.navigate('BuyOrders') },
-              ].map((s) => (
-                <RailItem key={s.key} label={s.label} Icon={s.Icon} badge={loading ? null : s.value} onPress={s.go} />
+                { key: 'req', Icon: MessageSquareText, tint: TEAL, bg: '#EAF6FB', value: newRequests, label: 'New Requests', go: () => navigation.navigate('OwnerSellRequests') },
+                { key: 'act', Icon: ShoppingCart, tint: '#E08A00', bg: '#FFF6E6', value: activeOrders, label: 'Active Orders', go: () => navigation.navigate('BuyOrders') },
+                { key: 'done', Icon: CheckCircle2, tint: '#16A34A', bg: '#EAF8EE', value: doneToday, label: 'Completed Today', go: () => navigation.navigate('BuyOrders') },
+              ].map((s, i) => (
+                <Pressable key={s.key} onPress={s.go} accessibilityRole="button" accessibilityLabel={`${s.label}: ${s.value}`} className="active:opacity-80"
+                  style={{ flex: 1, marginLeft: i ? 8 : 0, backgroundColor: s.bg, borderRadius: 16, borderWidth: 1, borderColor: '#FFFFFF', paddingHorizontal: 10, paddingVertical: 14, ...cardShadow }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <s.Icon size={compact ? 18 : 22} color={s.tint} strokeWidth={2.2} />
+                    <Text numberOfLines={1} style={{ flex: 1, marginLeft: 8, fontSize: rf(compact ? 17 : 20), fontWeight: '800', color: INK }}>{loading ? '–' : s.value}</Text>
+                    <ChevronRight size={16} color={TEAL} />
+                  </View>
+                  <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8} style={{ marginTop: 6, fontSize: rf(11.5), color: '#374151' }}>{s.label}</Text>
+                </Pressable>
               ))}
             </View>
 
