@@ -103,7 +103,10 @@ const specLine = (it) => String(it?.description || '').split(/\s*[·|/,]\s*/).ma
 // uses the `active:` className.
 // Horizontal category menu item: round image (admin category-menu image or
 // the category's own image), the line icon when there is none.
-function RailItem({ label, Icon, active, onPress, badge }) {
+// Category colours (tile tint + glyph), cycled by position.
+const CAT_TONES = ['#035C6C', '#2563EB', '#7C3AED', '#DB2777', '#EA580C', '#16A34A', '#0891B2', '#CA8A04'];
+
+function RailItem({ label, Icon, active, onPress, badge, tone = TEAL }) {
   return (
     <Pressable
       onPress={onPress}
@@ -115,12 +118,14 @@ function RailItem({ label, Icon, active, onPress, badge }) {
     >
       {/* Same tile as Home → Services: soft rounded square, white ring, soft shadow, thin dark glyph. */}
       <View style={{
-        width: 60, height: 60, borderRadius: 17, alignItems: 'center', justifyContent: 'center',
-        backgroundColor: '#FAFBFD', borderWidth: active ? 2 : 3, borderColor: active ? TEAL : '#FFFFFF',
-        shadowColor: TEAL, shadowOpacity: 0.10, shadowRadius: 10, shadowOffset: { width: 0, height: 3 }, elevation: 3,
+        width: 60, height: 60, borderRadius: 18, alignItems: 'center', justifyContent: 'center',
+        backgroundColor: active ? tone : `${tone}14`, borderWidth: 2, borderColor: active ? `${tone}55` : '#FFFFFF',
+        shadowColor: tone, shadowOpacity: active ? 0.28 : 0.12, shadowRadius: active ? 10 : 8, shadowOffset: { width: 0, height: 3 }, elevation: active ? 5 : 3,
       }}>
-        {/* Line icon only (no category images), as on Home → Services. */}
-        <Icon size={22} color="#17191B" strokeWidth={1.5} />
+        {/* Inner disc gives the glyph depth; line icon only (no category images). */}
+        <View style={{ width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', backgroundColor: active ? 'rgba(255,255,255,0.18)' : '#FFFFFF' }}>
+          <Icon size={20} color={active ? '#FFFFFF' : tone} strokeWidth={1.9} />
+        </View>
         {badge != null ? (
           <View style={{ position: 'absolute', top: -6, right: -6, minWidth: 20, height: 20, borderRadius: 10, paddingHorizontal: 5, backgroundColor: TEAL, borderWidth: 2, borderColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center' }}>
             <Text style={{ fontSize: 10, fontWeight: '800', color: '#FFFFFF' }}>{badge}</Text>
@@ -547,10 +552,10 @@ export default function OwnerBuyHomeScreen({ navigation }) {
             ) : (
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: PAD - 4, paddingTop: 14 }}>
                 <RailItem label="All" Icon={LayoutGrid} active={selCat === 'ALL'} onPress={openAll} />
-                {cats.map((c) => (
-                  <RailItem key={c.id} label={c.name} Icon={catIcon(c)} image={catImage(c)} active={selCat === c.id} onPress={() => pickCat(c.id)} />
+                {cats.map((c, i) => (
+                  <RailItem key={c.id} tone={CAT_TONES[(i + 1) % CAT_TONES.length]} label={c.name} Icon={catIcon(c)} image={catImage(c)} active={selCat === c.id} onPress={() => pickCat(c.id)} />
                 ))}
-                <RailItem label="Spares" Icon={Settings} image={menuImages[categoryMenuKey('Spares')] || menuImages[categoryMenuKey('Spare Parts')]} active={selCat === SPARES} onPress={() => pickCat(SPARES)} />
+                <RailItem label="Spares" tone="#475569" Icon={Settings} image={menuImages[categoryMenuKey('Spares')] || menuImages[categoryMenuKey('Spare Parts')]} active={selCat === SPARES} onPress={() => pickCat(SPARES)} />
               </ScrollView>
             )}
 
