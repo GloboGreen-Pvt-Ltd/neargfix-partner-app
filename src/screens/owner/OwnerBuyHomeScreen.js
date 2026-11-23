@@ -5,7 +5,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSelector } from 'react-redux';
 import {
-  ArrowRight, Bell, Cable, CheckCircle2, ChevronRight, Compass, Eye, FileText, Headphones, Laptop, LayoutGrid, MapPin,
+  ArrowRight, Bell, Cable, CheckCircle2, Compass, Eye, FileText, Headphones, Laptop, LayoutGrid, MapPin,
   MessageSquareText, Package, Search, Settings, ShoppingCart, SlidersHorizontal, Smartphone, Store, Tablet, Truck,
   UserRound, UsersRound, Watch, X,
 } from 'lucide-react-native';
