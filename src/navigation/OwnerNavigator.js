@@ -179,6 +179,9 @@ import DevicePhotoCaptureScreen from '../screens/owner/service-booking-shop/Devi
 import ScanQrCodeScreen from '../screens/owner/service-booking-shop/ScanQrCodeScreen';
 import ShopServiceStatusScreen from '../screens/owner/ShopServiceStatusScreen';
 import OwnerLeaveRequestsScreen from '../screens/owner/OwnerLeaveRequestsScreen';
+import OwnerShopPresenceScreen from '../screens/owner/presence/OwnerShopPresenceScreen';
+import OwnerShopPresenceDetailScreen from '../screens/owner/presence/OwnerShopPresenceDetailScreen';
+import OwnerShopPresenceSettingsScreen from '../screens/owner/presence/OwnerShopPresenceSettingsScreen';
 import ShopChatInboxScreen from '../screens/owner/chat/ShopChatInboxScreen';
 import ShopChatThreadScreen from '../screens/owner/chat/ShopChatThreadScreen';
 import SubscriptionScreen from '../screens/owner/SubscriptionScreen';
