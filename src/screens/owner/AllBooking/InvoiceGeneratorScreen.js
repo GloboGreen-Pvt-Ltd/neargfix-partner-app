@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
@@ -26,6 +26,8 @@ import {
   FileText,
   Wallet,
   BookText,
+  Banknote,
+  QrCode,
   AlertTriangle,
   ChevronUp,
   Eye,
@@ -39,7 +41,7 @@ import {
   X,
 } from 'lucide-react-native';
 import { Loader } from '../../../components/rnr';
-import { notify } from '../../../components/confirm';
+import { confirm, notify } from '../../../components/confirm';
 import SafeModal, { ModalInsets } from '../../../components/SafeModal';
 import { ticketApi } from '../../../api/client';
 import { stepBlockedBy } from '../../common/serviceHistoryPhases';
@@ -199,10 +201,18 @@ export default function InvoiceGeneratorScreen({ route, navigation }) {
   // that column is absent on servers without migration 89. The deposit is
   // recorded on the ticket; that is the figure to deduct.
   //
-  // `paidNowStr` is what is being handed over at delivery; the credit is
-  // whatever is left and is never typed directly, so the three figures cannot
-  // contradict each other.
-  const [paidNowStr, setPaidNowStr] = useState('');
+  // Cash and UPI handed over at delivery: either, both, or neither. The credit
+  // is whatever is left and is never typed directly. UPI is what the owner
+  // confirms they received; there is no gateway check behind it.
+  const [cashStr, setCashStr] = useState('');
+  const [upiStr, setUpiStr] = useState('');
+  // The figures the owner confirmed a credit for. Any change to the bill or the
+  // payments makes the signature differ, so the confirmation lapses by itself.
+  const [creditOkSig, setCreditOkSig] = useState(null);
+  // Paid on a saved invoice before Cash / UPI were recorded separately. Kept as
+  // is (never reset, never re-labelled) and counted in every total.
+  const [legacyPaid, setLegacyPaid] = useState(0);
+  const busy = useRef(false);
   const [paymentNote, setPaymentNote] = useState('');
   // Compact-layout UI state: Cash Book fold, preview.
   const [cashOpen, setCashOpen] = useState(false);
@@ -265,7 +275,13 @@ export default function InvoiceGeneratorScreen({ route, navigation }) {
       // No advance to restore — it is read straight off the ticket every time
       // (see the state block above), so a re-generated bill deducts the same
       // deposit as the first one.
-      setPaidNowStr(Number(inv?.amountPaid) > 0 ? String(Number(inv.amountPaid)) : '');
+      // Re-opening a split invoice shows its split. Older invoices stored only a
+      // total with no method, so those start empty and are re-entered.
+      setCashStr(Number(inv?.cashAmount) > 0 ? String(Number(inv.cashAmount)) : '');
+      setUpiStr(Number(inv?.upiAmount) > 0 ? String(Number(inv.upiAmount)) : '');
+      setLegacyPaid(inv ? Math.max(0, inv.legacyPaidAmount != null
+        ? Number(inv.legacyPaidAmount) || 0
+        : (Number(inv.amountPaid) || 0) - (Number(inv.cashAmount) || 0) - (Number(inv.upiAmount) || 0)) : 0);
       setPaymentNote(inv?.paymentNote || '');
 
       // Mobile phone with no IMEI on the booking → IMEI Verification first,
@@ -397,19 +413,38 @@ export default function InvoiceGeneratorScreen({ route, navigation }) {
     const finalPayable = totals.finalPayable;
     const advance = Math.min(Math.max(advancePaid, 0), Math.max(finalPayable, 0));
     const netPayable = Math.max(0, finalPayable - advance);
-    const paidNow = Math.min(money(paidNowStr), netPayable);
-    const credit = Math.max(0, netPayable - paidNow);
+    const cash = money(cashStr);
+    const upi = money(upiStr);
+    const legacy = +Number(legacyPaid || 0).toFixed(2);
+    const received = +(legacy + cash + upi).toFixed(2);
+    const over = received > netPayable + 0.004;
+    const paidNow = Math.min(received, netPayable);
+    const credit = +Math.max(0, netPayable - paidNow).toFixed(2);
     return {
       finalPayable,
       advance,
       netPayable,
+      cash,
+      upi,
+      legacy,
+      received,
+      over,
       paidNow,
       credit,
+      sig: [finalPayable, advance, legacy, cash, upi].map((n) => Number(n).toFixed(2)).join('|'),
       // A bill with nothing left on it, however it got there — fully prepaid,
       // or settled at the counter. Drives the "Settled" pill.
       settled: credit <= 0,
     };
-  }, [totals.finalPayable, advancePaid, paidNowStr]);
+  }, [totals.finalPayable, advancePaid, cashStr, upiStr, legacyPaid]);
+  const creditConfirmed = pay.credit > 0 && creditOkSig === pay.sig;
+  // Typing a charge or a rate alone never enables this: the money must be fully
+  // received, or the balance confirmed as the customer's credit.
+  const canGenerate = !pay.over && (pay.credit <= 0 || creditConfirmed);
+  const fillRemaining = (setter, other) => {
+    const rest = Math.max(0, pay.netPayable - pay.legacy - other);
+    setter(rest > 0 ? String(+rest.toFixed(2)) : '');
+  };
 
   // A credit can only be tracked against an account, and an account is keyed by
   // phone number. Without one the bill still records the debt but the Cash Book
@@ -422,11 +457,41 @@ export default function InvoiceGeneratorScreen({ route, navigation }) {
   // records nothing new, so it is never held back.
   const invoiceBlockedBy = existing ? null : stepBlockedBy(events, 'INVOICE_GENERATED');
 
-  const onGenerate = async () => {
+  const confirmCredit = async () => {
+    if (busy.current) return;
+    if (pay.over) {
+      notify('Check the amounts', `Cash + UPI is more than the ₹${fmt(pay.netPayable)} due.`, { type: 'warning' });
+      return;
+    }
+    const none = pay.received <= 0;
+    const who = ticket?.customerName || 'the customer';
+    const ok = await confirm({
+      title: none ? 'Confirm Credit Invoice' : 'Confirm customer credit',
+      message: none
+        ? `No payment received. The full ₹${fmt(pay.credit)} will be recorded as ${who}'s credit.`
+        : `Received ₹${fmt(pay.received)} (Cash ₹${fmt(pay.cash)} · UPI ₹${fmt(pay.upi)}${pay.legacy > 0 ? ` · earlier ₹${fmt(pay.legacy)}` : ''}). The balance ₹${fmt(pay.credit)} will be recorded as ${who}'s credit.`,
+      confirmText: 'Confirm & Generate',
+    });
+    if (!ok) return;
+    setCreditOkSig(pay.sig);
+    onGenerate(pay.sig);
+  };
+
+  const onGenerate = async (confirmedSig) => {
+    if (busy.current) return;
     if (invoiceBlockedBy) {
       notify('Complete the previous step first', `Record "${invoiceBlockedBy}" before generating the invoice.`);
       return;
     }
+    if (pay.cash < 0 || pay.upi < 0 || pay.over) {
+      notify('Check the amounts', `Cash + UPI must be between ₹0 and ₹${fmt(pay.netPayable)}.`, { type: 'warning' });
+      return;
+    }
+    if (pay.credit > 0 && (typeof confirmedSig === 'string' ? confirmedSig : creditOkSig) !== pay.sig) {
+      confirmCredit();
+      return;
+    }
+    busy.current = true;
     setSubmitting(true);
     try {
       // Build a slNo→breakdown map from chargesSummary so spare lines carry
@@ -473,6 +538,10 @@ export default function InvoiceGeneratorScreen({ route, navigation }) {
         advancePaid: +pay.advance.toFixed(2),
         netPayableAmount: +pay.netPayable.toFixed(2),
         amountPaid: +pay.paidNow.toFixed(2),
+        // The server enforces this too: a balance without it is refused (409).
+        creditConfirmed: pay.credit > 0 && (typeof confirmedSig === 'string' ? confirmedSig : creditOkSig) === pay.sig,
+        cashAmount: +pay.cash.toFixed(2),
+        upiAmount: +pay.upi.toFixed(2),
         creditAmount: +pay.credit.toFixed(2),
         paymentNote: paymentNote.trim(),
         paymentDate: toApiDate(new Date()),
@@ -537,8 +606,14 @@ export default function InvoiceGeneratorScreen({ route, navigation }) {
       // Back to Booking Details — the next step (Delivered to Customer) is the slide there.
       navigation.goBack();
     } catch (e) {
-      notify('Generate failed', e?.message || 'Could not generate invoice');
+      if (/CREDIT_CONFIRMATION_REQUIRED/.test(String(e?.message || ''))) {
+        setCreditOkSig(null);
+        notify('Confirm the credit', 'Confirm the balance as customer credit, then generate again.', { type: 'warning' });
+      } else {
+        notify('Generate failed', e?.message || 'Could not generate invoice');
+      }
     } finally {
+      busy.current = false;
       setSubmitting(false);
     }
   };
@@ -757,19 +832,24 @@ export default function InvoiceGeneratorScreen({ route, navigation }) {
           {/* Read-only: the deposit was recorded when the booking was taken. */}
           <Row label="Advance Paid" value={`− ₹${fmt(pay.advance)}`} sub={advancePaid > 0 ? 'Collected at booking' : null} />
           <Row label="Net Payable Now" value={`₹${fmt(pay.netPayable)}`} bold color={BRAND_GREEN} />
-          <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 4 }}>
-            <Text style={{ flex: 1, fontSize: 13, color: '#374151' }}>Amount Paid Now</Text>
-            {pay.netPayable > 0 && pay.paidNow < pay.netPayable ? (
-              <Pressable onPress={() => setPaidNowStr(String(+pay.netPayable.toFixed(2)))} accessibilityRole="button"
-                style={{ height: 32, paddingHorizontal: 12, borderRadius: 16, backgroundColor: '#E5F3F5', alignItems: 'center', justifyContent: 'center', marginRight: 8 }}>
-                <Text style={{ fontSize: 12, fontWeight: '800', color: BRAND_GREEN }}>Full</Text>
-              </Pressable>
-            ) : null}
-            <AmountBox value={paidNowStr} onChangeText={setPaidNowStr} editable={pay.netPayable > 0} />
-          </View>
-          {money(paidNowStr) > pay.netPayable && pay.netPayable >= 0 ? (
-            <Text style={{ fontSize: 11, color: '#DC2626', textAlign: 'right' }}>More than due — only ₹{fmt(pay.netPayable)} is counted.</Text>
-          ) : null}
+          {pay.netPayable > 0 ? (
+            <>
+              <Text style={{ fontSize: 11, fontWeight: '800', color: '#6B7280', letterSpacing: 0.6, marginTop: 6 }}>PAYMENT BREAKDOWN</Text>
+              <PayRow Icon={Banknote} label="Cash" sub="Cash received" value={cashStr} onChange={setCashStr}
+                onFill={pay.received < pay.netPayable ? () => fillRemaining(setCashStr, pay.upi) : null} />
+              <PayRow Icon={QrCode} label="UPI" sub="GPay / PhonePe · confirmed received" value={upiStr} onChange={setUpiStr}
+                onFill={pay.received < pay.netPayable ? () => fillRemaining(setUpiStr, pay.cash) : null} />
+              {pay.legacy > 0 ? (
+                <Row label="Legacy payment" value={`₹${fmt(pay.legacy)}`} sub="Paid earlier · method not recorded" />
+              ) : null}
+              <Row label="Total Received" value={`₹${fmt(pay.received)}`} bold color={BRAND_GREEN} />
+              {pay.over ? (
+                <Text style={{ fontSize: 11, color: '#DC2626', textAlign: 'right' }}>Cash + UPI is more than the ₹{fmt(pay.netPayable)} due. Reduce an amount.</Text>
+              ) : null}
+            </>
+          ) : (
+            <Text style={{ fontSize: 11.5, color: '#476B26', marginTop: 4 }}>Fully covered by the advance. No payment to record.</Text>
+          )}
           <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 8, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 12, backgroundColor: pay.credit <= 0 ? '#EDF4E7' : CREDIT_AMBER_BG }}>
             <Text style={{ flex: 1, fontSize: 13.5, fontWeight: '800', color: payTone }}>Balance Due</Text>
             <Text style={{ fontSize: 16, fontWeight: '800', color: payTone }}>₹{fmt(pay.credit)}</Text>
@@ -794,7 +874,9 @@ export default function InvoiceGeneratorScreen({ route, navigation }) {
             <View style={{ marginTop: 10, padding: 10, borderRadius: 12, backgroundColor: creditTrackable ? '#E5F3F5' : '#FEE2E2' }}>
               <Row label="Customer" value={`${ticket?.customerName || 'Customer'}${creditTrackable ? ` · ${formatPhone(ticket?.customerPhone)}` : ''}`} />
               <Row label="Invoice" value={`#${ticket?.trackingId || '—'} · ${toApiDate(new Date())}`} />
-              <Row label="Received now" value={`₹${fmt(pay.paidNow)}`} />
+              <Row label="Cash received" value={`₹${fmt(pay.cash)}`} />
+              <Row label="UPI received" value={`₹${fmt(pay.upi)}`} />
+              {pay.legacy > 0 ? <Row label="Paid earlier (method not recorded)" value={`₹${fmt(pay.legacy)}`} /> : null}
               <Row label="Outstanding balance" value={`₹${fmt(pay.credit)}`} bold color={pay.credit > 0 ? CREDIT_AMBER : '#476B26'} />
               <Text style={{ fontSize: 11, color: creditTrackable ? '#6B7280' : '#B91C1C', marginTop: 4 }}>
                 {creditTrackable
@@ -802,6 +884,14 @@ export default function InvoiceGeneratorScreen({ route, navigation }) {
                   : 'This booking has no valid 10-digit mobile number, so no customer account can be opened for the balance. Add one on the booking first.'}
               </Text>
             </View>
+          ) : null}
+          {pay.credit > 0 && !pay.over ? (
+            <Pressable onPress={confirmCredit} disabled={submitting || !!invoiceBlockedBy} accessibilityRole="button"
+              style={{ marginTop: 10, height: 44, borderRadius: 12, borderWidth: 1, borderColor: CREDIT_AMBER, backgroundColor: CREDIT_AMBER_BG, alignItems: 'center', justifyContent: 'center', opacity: invoiceBlockedBy ? 0.5 : 1 }}>
+              <Text style={{ fontSize: 13, fontWeight: '800', color: CREDIT_AMBER }}>
+                {pay.received > 0 ? 'Confirm Credit & Generate Invoice' : 'Confirm Credit Invoice'}
+              </Text>
+            </Pressable>
           ) : null}
         </Card>
 
@@ -845,9 +935,9 @@ export default function InvoiceGeneratorScreen({ route, navigation }) {
             </View>
             <TouchableOpacity
               activeOpacity={0.9}
-              disabled={submitting || !!invoiceBlockedBy}
-              onPress={onGenerate}
-              style={{ height: 50, paddingHorizontal: 20, borderRadius: 14, backgroundColor: BRAND_GREEN, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', opacity: invoiceBlockedBy ? 0.45 : submitting ? 0.7 : 1 }}
+              disabled={submitting || !!invoiceBlockedBy || !canGenerate}
+              onPress={() => onGenerate()}
+              style={{ height: 50, paddingHorizontal: 20, borderRadius: 14, backgroundColor: BRAND_GREEN, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', opacity: invoiceBlockedBy || !canGenerate ? 0.45 : submitting ? 0.7 : 1 }}
             >
               {submitting ? <ActivityIndicator size="small" color="#FFFFFF" /> : <FileText size={17} color="#FFFFFF" />}
               <Text style={{ marginLeft: 8, fontSize: 14, fontWeight: '800', color: '#FFFFFF' }}>
@@ -953,6 +1043,27 @@ function Row({ label, value, bold, color, sub }) {
     </View>
   );
 }
+function PayRow({ Icon, label, sub, value, onChange, onFill }) {
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 6 }}>
+      <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: '#E5F3F5', alignItems: 'center', justifyContent: 'center' }}>
+        <Icon size={16} color={BRAND_GREEN} />
+      </View>
+      <View style={{ flex: 1, minWidth: 0, marginLeft: 8 }}>
+        <Text style={{ fontSize: 13, fontWeight: '700', color: '#111111' }}>{label}</Text>
+        <Text style={{ fontSize: 10.5, color: '#6B7280' }} numberOfLines={1}>{sub}</Text>
+      </View>
+      {onFill ? (
+        <Pressable onPress={onFill} accessibilityRole="button" accessibilityLabel={`Fill remaining with ${label}`}
+          style={{ height: 30, paddingHorizontal: 10, borderRadius: 15, backgroundColor: '#E5F3F5', alignItems: 'center', justifyContent: 'center', marginRight: 6 }}>
+          <Text style={{ fontSize: 11.5, fontWeight: '800', color: BRAND_GREEN }}>Fill</Text>
+        </Pressable>
+      ) : null}
+      <AmountBox value={value} onChangeText={onChange} width={104} />
+    </View>
+  );
+}
+
 function AmountBox({ value, onChangeText, placeholder = '0', width = 120, editable = true }) {
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', width, height: 44, paddingHorizontal: 10, borderRadius: 12, borderWidth: 1, borderColor: '#E5E7EB', backgroundColor: editable ? '#FFFFFF' : '#F3F4F6' }}>

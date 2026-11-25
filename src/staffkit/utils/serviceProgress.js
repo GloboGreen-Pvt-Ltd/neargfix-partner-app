@@ -14,7 +14,7 @@
 //                         backend when the note's photos are PATCHed onto the ticket
 
 // Description + this many uploaded photos make a complete issue note.
-export const MIN_NOTE_PHOTOS = 2;
+export const MIN_NOTE_PHOTOS = 1;
 
 const up = (v) => String(v || '').toUpperCase();
 const evTime = (e) => Math.max(

@@ -788,7 +788,11 @@ export default function DeliveryInvoiceReportScreen({ navigation, route }) {
               <>
                 {advancePaid > 0 ? <KVRow label="Advance Paid" value={`₹${fmt(advancePaid)}`} /> : null}
                 {advancePaid > 0 ? <KVRow label="Net Payable" value={`₹${fmt(netPayable)}`} /> : null}
-                <KVRow label="Amount Paid" value={`₹${fmt(paidTotal)}`} />
+                {Number(invoice.cashAmount) > 0 ? <KVRow label="Cash" value={`₹${fmt(Number(invoice.cashAmount))}`} /> : null}
+                {Number(invoice.upiAmount) > 0 ? <KVRow label="UPI" value={`₹${fmt(Number(invoice.upiAmount))}`} /> : null}
+                {Number(invoice.legacyPaidAmount) > 0 && (Number(invoice.cashAmount) > 0 || Number(invoice.upiAmount) > 0)
+                  ? <KVRow label="Paid earlier (method not recorded)" value={`₹${fmt(Number(invoice.legacyPaidAmount))}`} /> : null}
+                <KVRow label="Total Paid" value={`₹${fmt(paidTotal)}`} />
                 <KVRow
                   label="Balance Payable"
                   value={`₹${fmt(creditAmount)}`}
@@ -1319,7 +1323,11 @@ function buildHtml({
         <div class="totbox"><div class="l">INVOICE TOTAL</div><div class="v">₹${fmtH(invoiceTotal)}</div></div>
         ${payShownH ? `
         ${advancePaidH > 0 ? `<div class="row" style="margin-top:4px"><span>Advance paid</span><b>₹${fmtH(advancePaidH)}</b></div>` : ''}
+        ${Number(invoice.cashAmount) > 0 ? `<div class="row"><span>Cash</span><b>₹${fmtH(Number(invoice.cashAmount))}</b></div>` : ''}
+        ${Number(invoice.upiAmount) > 0 ? `<div class="row"><span>UPI</span><b>₹${fmtH(Number(invoice.upiAmount))}</b></div>` : ''}
+        ${Number(invoice.legacyPaidAmount) > 0 && (Number(invoice.cashAmount) > 0 || Number(invoice.upiAmount) > 0) ? `<div class="row"><span>Paid earlier</span><b>₹${fmtH(Number(invoice.legacyPaidAmount))}</b></div>` : ''}
         <div class="row" style="${advancePaidH > 0 ? '' : 'margin-top:4px'}"><span>${advancePaidH > 0 ? 'Paid now' : 'Paid'}</span><b>₹${fmtH(amountPaidH)}</b></div>
+        <div class="row"><span>Total Paid</span><b>₹${fmtH(advancePaidH + amountPaidH)}</b></div>
         <div class="due" style="background:${dueTone.bg};color:${dueTone.fg}">
           <span class="l">BALANCE DUE</span><span class="v">₹${fmtH(creditAmountH)}</span>
         </div>
