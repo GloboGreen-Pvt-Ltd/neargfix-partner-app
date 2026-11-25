@@ -41,7 +41,7 @@ import {
   X,
 } from 'lucide-react-native';
 import { Loader } from '../../../components/rnr';
-import { confirm, notify } from '../../../components/confirm';
+import { notify } from '../../../components/confirm';
 import SafeModal, { ModalInsets } from '../../../components/SafeModal';
 import { ticketApi } from '../../../api/client';
 import { stepBlockedBy } from '../../common/serviceHistoryPhases';
@@ -212,6 +212,7 @@ export default function InvoiceGeneratorScreen({ route, navigation }) {
   // Paid on a saved invoice before Cash / UPI were recorded separately. Kept as
   // is (never reset, never re-labelled) and counted in every total.
   const [legacyPaid, setLegacyPaid] = useState(0);
+  const [creditSheetOpen, setCreditSheetOpen] = useState(false);
   const busy = useRef(false);
   const [paymentNote, setPaymentNote] = useState('');
   // Compact-layout UI state: Cash Book fold, preview.
@@ -457,24 +458,20 @@ export default function InvoiceGeneratorScreen({ route, navigation }) {
   // records nothing new, so it is never held back.
   const invoiceBlockedBy = existing ? null : stepBlockedBy(events, 'INVOICE_GENERATED');
 
-  const confirmCredit = async () => {
+  // Step 1 of a credit invoice: open the sheet. Nothing is saved here.
+  const confirmCredit = () => {
     if (busy.current) return;
     if (pay.over) {
       notify('Check the amounts', `Cash + UPI is more than the ₹${fmt(pay.netPayable)} due.`, { type: 'warning' });
       return;
     }
-    const none = pay.received <= 0;
-    const who = ticket?.customerName || 'the customer';
-    const ok = await confirm({
-      title: none ? 'Confirm Credit Invoice' : 'Confirm customer credit',
-      message: none
-        ? `No payment received. The full ₹${fmt(pay.credit)} will be recorded as ${who}'s credit.`
-        : `Received ₹${fmt(pay.received)} (Cash ₹${fmt(pay.cash)} · UPI ₹${fmt(pay.upi)}${pay.legacy > 0 ? ` · earlier ₹${fmt(pay.legacy)}` : ''}). The balance ₹${fmt(pay.credit)} will be recorded as ${who}'s credit.`,
-      confirmText: 'Confirm & Generate',
-    });
-    if (!ok) return;
+    setCreditSheetOpen(true);
+  };
+  // Step 2: the owner accepts the balance as credit. Local state only — the
+  // invoice and its Cash Book entry are written by Generate Invoice.
+  const acceptCredit = () => {
     setCreditOkSig(pay.sig);
-    onGenerate(pay.sig);
+    setCreditSheetOpen(false);
   };
 
   const onGenerate = async (confirmedSig) => {
@@ -622,7 +619,9 @@ export default function InvoiceGeneratorScreen({ route, navigation }) {
 
   // ── Display bits ──────────────────────────────────────────────────────
   const shownDevice = /^(.*?)(?: · ([^()]+?))?(?: \(([^)]*)\))?$/.exec(String(ticket?.deviceDisplayName || '').trim()) || [];
-  const modelName = (shownDevice[1] || '').trim() || ticket?.deviceModelName || ticket?.modelName || 'Device';
+  // "Apple Apple iPhone 16 Pro Max" → "Apple iPhone 16 Pro Max" (display only).
+  const modelName = String((shownDevice[1] || '').trim() || ticket?.deviceModelName || ticket?.modelName || 'Device')
+    .replace(/^(\S+)\s+\1(?=\s|$)/i, '$1');
   const specLine = [ticket?.modelNumber || (shownDevice[2] || '').trim(), (shownDevice[3] || '').replace(/ \/ /g, ' · ')]
     .filter(Boolean).join(' · ');
   const deviceImg = ticket?.deviceImageUrl || ticket?.modelImageUrl || null;
@@ -713,7 +712,7 @@ export default function InvoiceGeneratorScreen({ route, navigation }) {
                 <View style={{ flexDirection: 'row', gap: 8 }}>
                   <View style={{ flex: 1.4 }}>
                     <Text style={cap}>Rate</Text>
-                    <View style={box}>
+                    <FocusBox style={box}>
                       <Text style={{ fontSize: 13, fontWeight: '800', color: '#6B7280', marginRight: 4 }}>₹</Text>
                       <TextInput
                         value={String(sp.rate ?? '')}
@@ -725,11 +724,11 @@ export default function InvoiceGeneratorScreen({ route, navigation }) {
                         accessibilityLabel={`${sp.description} rate`}
                         style={[input, { textAlign: 'right' }]}
                       />
-                    </View>
+                    </FocusBox>
                   </View>
                   <View style={{ flex: 0.7 }}>
                     <Text style={cap}>Qty</Text>
-                    <View style={box}>
+                    <FocusBox style={box}>
                       <TextInput
                         value={String(sp.qty ?? '')}
                         onChangeText={(v) => updateSpareField(i, 'qty', v.replace(/[^0-9]/g, ''))}
@@ -740,11 +739,11 @@ export default function InvoiceGeneratorScreen({ route, navigation }) {
                         accessibilityLabel={`${sp.description} quantity`}
                         style={[input, { textAlign: 'center' }]}
                       />
-                    </View>
+                    </FocusBox>
                   </View>
                   <View style={{ flex: 1.3 }}>
                     <Text style={cap}>Warranty</Text>
-                    <View style={box}>
+                    <FocusBox style={box}>
                       <TextInput
                         value={String(sp.warranty ?? '')}
                         onChangeText={(v) => updateSpareField(i, 'warranty', v)}
@@ -754,7 +753,7 @@ export default function InvoiceGeneratorScreen({ route, navigation }) {
                         accessibilityLabel={`${sp.description} warranty`}
                         style={input}
                       />
-                    </View>
+                    </FocusBox>
                   </View>
                 </View>
               </View>
@@ -886,17 +885,23 @@ export default function InvoiceGeneratorScreen({ route, navigation }) {
             </View>
           ) : null}
           {pay.credit > 0 && !pay.over ? (
-            <Pressable onPress={confirmCredit} disabled={submitting || !!invoiceBlockedBy} accessibilityRole="button"
-              style={{ marginTop: 10, height: 44, borderRadius: 12, borderWidth: 1, borderColor: CREDIT_AMBER, backgroundColor: CREDIT_AMBER_BG, alignItems: 'center', justifyContent: 'center', opacity: invoiceBlockedBy ? 0.5 : 1 }}>
-              <Text style={{ fontSize: 13, fontWeight: '800', color: CREDIT_AMBER }}>
-                {pay.received > 0 ? 'Confirm Credit & Generate Invoice' : 'Confirm Credit Invoice'}
-              </Text>
-            </Pressable>
+            creditConfirmed ? (
+              <View accessibilityRole="text" style={{ marginTop: 10, minHeight: 44, borderRadius: 12, backgroundColor: '#EDF4E7', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 12 }}>
+                <CheckCircle2 size={17} color="#476B26" />
+                <Text style={{ marginLeft: 6, fontSize: 13, fontWeight: '800', color: '#476B26' }}>Credit Confirmed · ₹{fmt(pay.credit)}</Text>
+              </View>
+            ) : (
+              <Pressable onPress={confirmCredit} disabled={submitting || !!invoiceBlockedBy} accessibilityRole="button"
+                style={{ marginTop: 10, height: 44, borderRadius: 12, borderWidth: 1, borderColor: CREDIT_AMBER, backgroundColor: CREDIT_AMBER_BG, alignItems: 'center', justifyContent: 'center', opacity: invoiceBlockedBy ? 0.5 : 1 }}>
+                <Text style={{ fontSize: 13, fontWeight: '800', color: CREDIT_AMBER }}>Confirm Credit</Text>
+              </Pressable>
+            )
           ) : null}
         </Card>
 
         {/* ── 10. Payment note (optional) ── */}
-        <Card>
+        <Card style={{ padding: 0 }}>
+          <FocusBox style={{ minHeight: 64, padding: 12 }}>
           <TextInput
             value={paymentNote}
             onChangeText={setPaymentNote}
@@ -907,6 +912,7 @@ export default function InvoiceGeneratorScreen({ route, navigation }) {
             cursorColor={BRAND_GREEN}
             style={{ minHeight: 44, maxHeight: 90, padding: 0, fontSize: 13.5, color: '#111111', textAlignVertical: 'top' }}
           />
+          </FocusBox>
         </Card>
 
         {/* ── 11. Invoice preview ── */}
@@ -947,6 +953,46 @@ export default function InvoiceGeneratorScreen({ route, navigation }) {
           </View>
         </View>
       </KeyboardStickyView>
+
+      {/* Credit confirmation sheet — confirms locally; saves nothing. */}
+      <SafeModal visible={creditSheetOpen} transparent animationType="slide" onRequestClose={() => setCreditSheetOpen(false)}>
+        <ModalInsets>
+          {({ insets: mi }) => (
+            <Pressable style={{ flex: 1, backgroundColor: 'rgba(17,17,17,0.45)', justifyContent: 'flex-end' }} onPress={() => setCreditSheetOpen(false)}>
+              <Pressable onPress={(e) => e.stopPropagation()} style={{ backgroundColor: '#FFFFFF', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 16, paddingBottom: mi.bottom + 16, width: '100%', maxWidth: 560, alignSelf: 'center' }}>
+                <View style={{ alignSelf: 'center', width: 40, height: 4, borderRadius: 2, backgroundColor: '#E5E7EB', marginBottom: 12 }} />
+                <Text style={{ fontSize: 16, fontWeight: '800', color: '#111111' }}>{pay.received > 0 ? 'Confirm customer credit' : 'Confirm Credit Invoice'}</Text>
+                <Text style={{ fontSize: 12, color: '#6B7280', marginTop: 2, marginBottom: 8 }}>
+                  The outstanding amount goes on {ticket?.customerName || 'the customer'}'s Cash Book account when you generate the invoice.
+                </Text>
+                <Row label="Invoice Amount" value={`₹${fmt(pay.finalPayable)}`} />
+                <Row label="Advance Paid" value={`₹${fmt(pay.advance)}`} />
+                <Row label="Cash Received" value={`₹${fmt(pay.cash)}`} />
+                <Row label="UPI Received" value={`₹${fmt(pay.upi)}`} />
+                {pay.legacy > 0 ? <Row label="Paid earlier (method not recorded)" value={`₹${fmt(pay.legacy)}`} /> : null}
+                <Row label="Total Paid" value={`₹${fmt(pay.advance + pay.received)}`} bold />
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 6, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 12, backgroundColor: CREDIT_AMBER_BG }}>
+                  <Text style={{ flex: 1, fontSize: 13.5, fontWeight: '800', color: CREDIT_AMBER }}>Outstanding Credit</Text>
+                  <Text style={{ fontSize: 16, fontWeight: '800', color: CREDIT_AMBER }}>₹{fmt(pay.credit)}</Text>
+                </View>
+                {!creditTrackable ? (
+                  <Text style={{ fontSize: 11, color: '#B91C1C', marginTop: 6 }}>No valid mobile number on this booking — the credit is kept on the bill but can’t be added to the Cash Book.</Text>
+                ) : null}
+                <View style={{ flexDirection: 'row', gap: 10, marginTop: 14 }}>
+                  <Pressable onPress={() => setCreditSheetOpen(false)} accessibilityRole="button"
+                    style={{ flex: 1, height: 48, borderRadius: 14, borderWidth: 1, borderColor: '#D1D5DB', alignItems: 'center', justifyContent: 'center' }}>
+                    <Text style={{ fontSize: 14, fontWeight: '800', color: '#374151' }}>Cancel</Text>
+                  </Pressable>
+                  <Pressable onPress={acceptCredit} accessibilityRole="button"
+                    style={{ flex: 1.4, height: 48, borderRadius: 14, backgroundColor: BRAND_GREEN, alignItems: 'center', justifyContent: 'center' }}>
+                    <Text style={{ fontSize: 14, fontWeight: '800', color: '#FFFFFF' }}>Confirm Credit</Text>
+                  </Pressable>
+                </View>
+              </Pressable>
+            </Pressable>
+          )}
+        </ModalInsets>
+      </SafeModal>
 
       {/* Invoice preview — built from what is on this screen right now. */}
       <SafeModal visible={previewOpen} transparent animationType="fade" onRequestClose={() => setPreviewOpen(false)}>
@@ -1064,9 +1110,23 @@ function PayRow({ Icon, label, sub, value, onChange, onFill }) {
   );
 }
 
+// Makes the whole visible box focus its TextInput: the ₹ sign, padding and
+// empty space included. Taps on the text itself still reach the native input,
+// so cursor placement and selection are unchanged.
+function FocusBox({ style, children }) {
+  const ref = useRef(null);
+  return (
+    <Pressable onPress={() => ref.current?.focus()} style={style} accessible={false}>
+      {React.Children.map(children, (c) => (c && c.type === TextInput
+        ? React.cloneElement(c, { ref, style: [c.props.style, { alignSelf: 'stretch' }] })
+        : c))}
+    </Pressable>
+  );
+}
+
 function AmountBox({ value, onChangeText, placeholder = '0', width = 120, editable = true }) {
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', width, height: 44, paddingHorizontal: 10, borderRadius: 12, borderWidth: 1, borderColor: '#E5E7EB', backgroundColor: editable ? '#FFFFFF' : '#F3F4F6' }}>
+    <FocusBox style={{ flexDirection: 'row', alignItems: 'center', width, height: 44, paddingHorizontal: 10, borderRadius: 12, borderWidth: 1, borderColor: '#E5E7EB', backgroundColor: editable ? '#FFFFFF' : '#F3F4F6' }}>
       <Text style={{ fontSize: 13, fontWeight: '800', color: '#6B7280', marginRight: 4 }}>₹</Text>
       <TextInput
         value={value}
@@ -1078,7 +1138,7 @@ function AmountBox({ value, onChangeText, placeholder = '0', width = 120, editab
         cursorColor={BRAND_GREEN}
         style={{ flex: 1, padding: 0, fontSize: 14, fontWeight: '800', color: '#111111', textAlign: 'right' }}
       />
-    </View>
+    </FocusBox>
   );
 }
 
