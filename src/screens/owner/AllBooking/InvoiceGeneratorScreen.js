@@ -209,6 +209,9 @@ export default function InvoiceGeneratorScreen({ route, navigation }) {
   // The figures the owner confirmed a credit for. Any change to the bill or the
   // payments makes the signature differ, so the confirmation lapses by itself.
   const [creditOkSig, setCreditOkSig] = useState(null);
+  // Paid on a saved invoice before Cash / UPI were recorded separately. Kept as
+  // is (never reset, never re-labelled) and counted in every total.
+  const [legacyPaid, setLegacyPaid] = useState(0);
   const busy = useRef(false);
   const [paymentNote, setPaymentNote] = useState('');
   // Compact-layout UI state: Cash Book fold, preview.
@@ -276,6 +279,9 @@ export default function InvoiceGeneratorScreen({ route, navigation }) {
       // total with no method, so those start empty and are re-entered.
       setCashStr(Number(inv?.cashAmount) > 0 ? String(Number(inv.cashAmount)) : '');
       setUpiStr(Number(inv?.upiAmount) > 0 ? String(Number(inv.upiAmount)) : '');
+      setLegacyPaid(inv ? Math.max(0, inv.legacyPaidAmount != null
+        ? Number(inv.legacyPaidAmount) || 0
+        : (Number(inv.amountPaid) || 0) - (Number(inv.cashAmount) || 0) - (Number(inv.upiAmount) || 0)) : 0);
       setPaymentNote(inv?.paymentNote || '');
 
       // Mobile phone with no IMEI on the booking → IMEI Verification first,
@@ -409,7 +415,8 @@ export default function InvoiceGeneratorScreen({ route, navigation }) {
     const netPayable = Math.max(0, finalPayable - advance);
     const cash = money(cashStr);
     const upi = money(upiStr);
-    const received = +(cash + upi).toFixed(2);
+    const legacy = +Number(legacyPaid || 0).toFixed(2);
+    const received = +(legacy + cash + upi).toFixed(2);
     const over = received > netPayable + 0.004;
     const paidNow = Math.min(received, netPayable);
     const credit = +Math.max(0, netPayable - paidNow).toFixed(2);
@@ -419,22 +426,23 @@ export default function InvoiceGeneratorScreen({ route, navigation }) {
       netPayable,
       cash,
       upi,
+      legacy,
       received,
       over,
       paidNow,
       credit,
-      sig: [finalPayable, advance, cash, upi].map((n) => Number(n).toFixed(2)).join('|'),
+      sig: [finalPayable, advance, legacy, cash, upi].map((n) => Number(n).toFixed(2)).join('|'),
       // A bill with nothing left on it, however it got there — fully prepaid,
       // or settled at the counter. Drives the "Settled" pill.
       settled: credit <= 0,
     };
-  }, [totals.finalPayable, advancePaid, cashStr, upiStr]);
+  }, [totals.finalPayable, advancePaid, cashStr, upiStr, legacyPaid]);
   const creditConfirmed = pay.credit > 0 && creditOkSig === pay.sig;
   // Typing a charge or a rate alone never enables this: the money must be fully
   // received, or the balance confirmed as the customer's credit.
   const canGenerate = !pay.over && (pay.credit <= 0 || creditConfirmed);
   const fillRemaining = (setter, other) => {
-    const rest = Math.max(0, pay.netPayable - other);
+    const rest = Math.max(0, pay.netPayable - pay.legacy - other);
     setter(rest > 0 ? String(+rest.toFixed(2)) : '');
   };
 
@@ -461,7 +469,7 @@ export default function InvoiceGeneratorScreen({ route, navigation }) {
       title: none ? 'Confirm Credit Invoice' : 'Confirm customer credit',
       message: none
         ? `No payment received. The full ₹${fmt(pay.credit)} will be recorded as ${who}'s credit.`
-        : `Received ₹${fmt(pay.received)} (Cash ₹${fmt(pay.cash)} · UPI ₹${fmt(pay.upi)}). The balance ₹${fmt(pay.credit)} will be recorded as ${who}'s credit.`,
+        : `Received ₹${fmt(pay.received)} (Cash ₹${fmt(pay.cash)} · UPI ₹${fmt(pay.upi)}${pay.legacy > 0 ? ` · earlier ₹${fmt(pay.legacy)}` : ''}). The balance ₹${fmt(pay.credit)} will be recorded as ${who}'s credit.`,
       confirmText: 'Confirm & Generate',
     });
     if (!ok) return;
@@ -530,6 +538,8 @@ export default function InvoiceGeneratorScreen({ route, navigation }) {
         advancePaid: +pay.advance.toFixed(2),
         netPayableAmount: +pay.netPayable.toFixed(2),
         amountPaid: +pay.paidNow.toFixed(2),
+        // The server enforces this too: a balance without it is refused (409).
+        creditConfirmed: pay.credit > 0 && (typeof confirmedSig === 'string' ? confirmedSig : creditOkSig) === pay.sig,
         cashAmount: +pay.cash.toFixed(2),
         upiAmount: +pay.upi.toFixed(2),
         creditAmount: +pay.credit.toFixed(2),
@@ -596,7 +606,12 @@ export default function InvoiceGeneratorScreen({ route, navigation }) {
       // Back to Booking Details — the next step (Delivered to Customer) is the slide there.
       navigation.goBack();
     } catch (e) {
-      notify('Generate failed', e?.message || 'Could not generate invoice');
+      if (/CREDIT_CONFIRMATION_REQUIRED/.test(String(e?.message || ''))) {
+        setCreditOkSig(null);
+        notify('Confirm the credit', 'Confirm the balance as customer credit, then generate again.', { type: 'warning' });
+      } else {
+        notify('Generate failed', e?.message || 'Could not generate invoice');
+      }
     } finally {
       busy.current = false;
       setSubmitting(false);
@@ -824,6 +839,9 @@ export default function InvoiceGeneratorScreen({ route, navigation }) {
                 onFill={pay.received < pay.netPayable ? () => fillRemaining(setCashStr, pay.upi) : null} />
               <PayRow Icon={QrCode} label="UPI" sub="GPay / PhonePe · confirmed received" value={upiStr} onChange={setUpiStr}
                 onFill={pay.received < pay.netPayable ? () => fillRemaining(setUpiStr, pay.cash) : null} />
+              {pay.legacy > 0 ? (
+                <Row label="Legacy payment" value={`₹${fmt(pay.legacy)}`} sub="Paid earlier · method not recorded" />
+              ) : null}
               <Row label="Total Received" value={`₹${fmt(pay.received)}`} bold color={BRAND_GREEN} />
               {pay.over ? (
                 <Text style={{ fontSize: 11, color: '#DC2626', textAlign: 'right' }}>Cash + UPI is more than the ₹{fmt(pay.netPayable)} due. Reduce an amount.</Text>
@@ -858,6 +876,7 @@ export default function InvoiceGeneratorScreen({ route, navigation }) {
               <Row label="Invoice" value={`#${ticket?.trackingId || '—'} · ${toApiDate(new Date())}`} />
               <Row label="Cash received" value={`₹${fmt(pay.cash)}`} />
               <Row label="UPI received" value={`₹${fmt(pay.upi)}`} />
+              {pay.legacy > 0 ? <Row label="Paid earlier (method not recorded)" value={`₹${fmt(pay.legacy)}`} /> : null}
               <Row label="Outstanding balance" value={`₹${fmt(pay.credit)}`} bold color={pay.credit > 0 ? CREDIT_AMBER : '#476B26'} />
               <Text style={{ fontSize: 11, color: creditTrackable ? '#6B7280' : '#B91C1C', marginTop: 4 }}>
                 {creditTrackable

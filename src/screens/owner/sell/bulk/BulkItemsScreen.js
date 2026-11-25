@@ -93,7 +93,7 @@ export default function BulkItemsScreen({ navigation, route }) {
         }),
         isNew: true,
       });
-      notify('Variant added', '', { preset: 'done', duration: 2 });
+      notify('Variant added', '', { preset: 'done' });
     } else {
       setEditor(null);
       if (another) notify('Batch is full', `One batch can hold up to ${MAX_ROWS} items.`);
