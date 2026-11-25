@@ -14,6 +14,8 @@ const TYPES = {
   info: { color: '#035C6C', bg: '#E5F3F5', Icon: Info },
 };
 const DEDUPE_MS = 3000;
+const TYPE_MS = { success: 1000, info: 1500, warning: 2000, error: 3000 };
+const ANIM_MS = 150;
 // Clears the floating bottom navigation bar on tab screens.
 const NAV_CLEARANCE = 76;
 
@@ -22,15 +24,16 @@ let last = { key: '', at: 0 };
 let seq = 0;
 
 /** showToast({ type: 'success' | 'error' | 'warning' | 'info', title, message, duration }) */
-export function showToast({ type = 'info', title = '', message = '', duration = 3000 } = {}) {
+export function showToast({ type = 'info', title = '', message = '', duration } = {}) {
   const t = String(title || '').trim();
   const m = String(message || '').trim();
   if (!t && !m) return;
-  const key = `${type}|${t}|${m}`;
+  const kind = TYPES[type] ? type : 'info';
+  const key = `${kind}|${t}|${m}`;
   const now = Date.now();
   if (key === last.key && now - last.at < DEDUPE_MS) return;
   last = { key, at: now };
-  listener?.({ id: ++seq, type: TYPES[type] ? type : 'info', title: t || m, message: t ? m : '', duration });
+  listener?.({ id: ++seq, type: kind, title: t || m, message: t ? m : '', duration: duration || TYPE_MS[kind] });
 }
 
 export function ToastHost() {
@@ -45,7 +48,7 @@ export function ToastHost() {
       clearTimeout(timer.current);
       setToast(next);
       anim.setValue(0);
-      Animated.timing(anim, { toValue: 1, duration: 220, useNativeDriver: true }).start();
+      Animated.timing(anim, { toValue: 1, duration: ANIM_MS, useNativeDriver: true }).start();
       timer.current = setTimeout(hide, next.duration);
     };
     const show = Keyboard.addListener(Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow', (e) => setKb(e?.endCoordinates?.height || 0));
@@ -55,7 +58,7 @@ export function ToastHost() {
 
   const hide = () => {
     clearTimeout(timer.current);
-    Animated.timing(anim, { toValue: 0, duration: 180, useNativeDriver: true }).start(({ finished }) => { if (finished) setToast(null); });
+    Animated.timing(anim, { toValue: 0, duration: ANIM_MS, useNativeDriver: true }).start(({ finished }) => { if (finished) setToast(null); });
   };
 
   if (!toast) return null;

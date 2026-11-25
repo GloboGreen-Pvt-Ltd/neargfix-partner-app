@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { RefreshControl, ActivityIndicator, Pressable, ScrollView, StatusBar, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { ArrowLeft, Check, RefreshCw, Search, Smartphone, UserX, X } from 'lucide-react-native';
+import { ArrowLeft, Check, RefreshCw, Search, Smartphone, UserRound, UserX, X } from 'lucide-react-native';
 import { ticketApi } from '../../../api/client';
 import { confirm, notify } from '../../../components/confirm';
 import { getOwnerTech } from '../../../api/ownerTechnician';
@@ -184,13 +184,16 @@ Repair progress, photos and history are kept. ${techName(picked)} must accept th
               style={{ minHeight: 56, marginTop: 12, paddingHorizontal: 12, paddingVertical: 10, borderRadius: 14, borderWidth: picked?.id === selfTech.id ? 1.5 : 1, borderColor: picked?.id === selfTech.id ? ACCENT : LINE, backgroundColor: picked?.id === selfTech.id ? MINT : '#FFFFFF', opacity: selfTech.id === currentTechnicianId ? 0.55 : 1 }}
             >
               <View className="items-center justify-center" style={{ height: 40, width: 40, borderRadius: 20, backgroundColor: ACCENT }}>
-                <Check size={18} color="#FFFFFF" strokeWidth={2.5} />
+                <UserRound size={20} color="#FFFFFF" strokeWidth={2.2} />
               </View>
               <View style={{ flex: 1, minWidth: 0, marginLeft: 10 }}>
                 <Text style={{ fontSize: 14, fontWeight: '800', color: INK }}>Assign to Myself</Text>
                 <Text style={{ fontSize: 11.5, color: MUTED, marginTop: 2 }} numberOfLines={1}>
                   {selfTech.id === currentTechnicianId ? 'You are on this job' : 'Work on this repair yourself'}
                 </Text>
+              </View>
+              <View className="items-center justify-center" style={{ height: 22, width: 22, borderRadius: 11, borderWidth: 2, borderColor: picked?.id === selfTech.id ? ACCENT : "#D1D5DB", backgroundColor: picked?.id === selfTech.id ? ACCENT : "#FFFFFF" }}>
+                {picked?.id === selfTech.id ? <Check size={12} color="#FFFFFF" strokeWidth={3} /> : null}
               </View>
             </Pressable>
           ) : null}

@@ -40,10 +40,10 @@ export function confirm({ title = 'Confirm', message = '', confirmText = 'OK', c
  *
  *   preset:   'done' → success, 'error' → error, 'none' → from the wording
  *   type:     'success' | 'error' | 'warning' | 'info' (overrides preset)
- *   duration: seconds (default 3)
+ *   duration: seconds (default by type: success 1, info 1.5, warning 2, error 3)
  */
 export function notify(title, message = '', options = {}) {
-  const { preset = 'none', duration = 3, type } = options;
+  const { preset = 'none', duration, type } = options;
   const kind = type || toastType(preset, title);
   // Raw error text (URLs, status codes, stack traces) never reaches the user.
   const safeTitle = isSafeMessage(title) ? String(title).trim() : (kind === 'success' ? 'Done' : SAFE.server);
@@ -51,7 +51,7 @@ export function notify(title, message = '', options = {}) {
   if (__DEV__ && (safeTitle !== String(title || '').trim() || (message && !safeMsg))) {
     console.log('[notify] hidden technical text');
   }
-  showToast({ type: kind, title: safeTitle, message: safeMsg === safeTitle ? '' : safeMsg, duration: Math.max(2, duration) * 1000 });
+  showToast({ type: kind, title: safeTitle, message: safeMsg === safeTitle ? '' : safeMsg, duration: duration ? duration * 1000 : undefined });
 }
 
 // Toast colour from the old Burnt preset, or from the wording when none given.
