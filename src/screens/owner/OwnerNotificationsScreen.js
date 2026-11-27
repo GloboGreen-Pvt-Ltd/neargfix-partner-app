@@ -39,12 +39,19 @@ const cardShadow = {
 // backend. Treat any of them as "read" so the badge, count, and mark-read stay
 // correct instead of showing every item as unread.
 const isUnread = (n) => !(n?.read || n?.readAt || n?.isRead);
+/** Local YYYY-MM-DD of an ISO time (presence screen's day). */
+const dayOf = (iso) => {
+  const d = iso ? new Date(iso) : null;
+  if (!d || Number.isNaN(d.getTime())) return undefined;
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
 
-// Filter tabs. The feed's `type` is bookings | pickups | enquiry | sell | buy |
-// team (employee staff-task updates; older rows: system). pickups / enquiry /
-// sell / buy / team decide the tab outright;
-// bookings and anything else are guessed from type + statusKey + title, so a
-// booking row about a pickup still lands on Pickup.
+// Filter tabs. The server sends each row's tab as `category` (SERVICE | PICKUP |
+// SELL | BUY | TEAM — PartnerNotificationPolicy) and only lists the approved
+// notification kinds. Older servers: the feed's `type` decides — customer selling
+// to the shop (sell, purchase) = Sell; customer buying from the shop
+// (sell_enquiry, buy, chat) = Buy — and anything else is guessed from
+// type + statusKey + title.
 const TABS = [
   { key: 'ALL', label: 'All' },
   { key: 'SERVICE', label: 'Service', icon: Wrench },
@@ -53,8 +60,11 @@ const TABS = [
   { key: 'BUY', label: 'Buy', icon: ShoppingCart },
   { key: 'TEAM', label: 'Team', icon: Users },
 ];
-const TYPE_TAB = { pickups: 'PICKUP', enquiry: 'SERVICE', sell: 'SELL', sell_enquiry: 'SELL', buy: 'BUY', purchase: 'BUY', team: 'TEAM' };
+const TYPE_TAB = { bookings: 'SERVICE', pickups: 'PICKUP', enquiry: 'SERVICE', sell: 'SELL', purchase: 'SELL', sell_enquiry: 'BUY', buy: 'BUY', chat: 'BUY', team: 'TEAM' };
+const CATEGORIES = new Set(['SERVICE', 'PICKUP', 'SELL', 'BUY', 'TEAM']);
 const categoryOf = (n) => {
+  const server = String(n?.category || '').toUpperCase();
+  if (CATEGORIES.has(server)) return server;
   const known = TYPE_TAB[String(n?.type || '').toLowerCase()];
   if (known) return known;
   const t = `${n?.type || ''} ${n?.statusKey || ''} ${n?.title || ''}`.toUpperCase();
@@ -128,7 +138,24 @@ export default function OwnerNotificationsScreen({ navigation }) {
     }
     if (cat === 'SELL') { navigation.navigate('OwnerSellRequests'); return; }
     if (cat === 'BUY') { navigation.navigate('MarketplaceOrders', { initialTab: 'Sell' }); return; }
-    if (cat === 'TEAM') { navigation.navigate('StaffTasks'); return; }
+    if (cat === 'TEAM') {
+      // entityRef = the employee (attendance / presence rows); tasks open the task list.
+      const key = String(n?.statusKey || '').toUpperCase();
+      if (n.entityRef && key.startsWith('ATTENDANCE_')) {
+        navigation.navigate('OwnerEmployeeAttendance', { employee: { id: n.entityRef } });
+      } else if (n.entityRef && key.startsWith('PRESENCE_')) {
+        navigation.navigate('OwnerShopPresenceDetail', { id: n.entityRef, date: dayOf(n.createdAt) });
+      } else {
+        navigation.navigate('StaffTasks');
+      }
+      return;
+    }
+    // Shop handover (TPIN): the pickup's detail screen holds the existing TPIN
+    // confirmation; it shows the completed state if already confirmed.
+    if (String(n?.statusKey || '').toUpperCase() === 'HANDOVER_REQUESTED' && n.bookingId) {
+      navigation.navigate('OwnerPickupServiceDetail', { id: n.bookingId });
+      return;
+    }
     if (n.ticketId) {
       navigation.navigate('BookingTimeline', { ticketId: n.ticketId });
       return;
