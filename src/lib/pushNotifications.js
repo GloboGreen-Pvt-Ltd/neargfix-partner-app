@@ -1,4 +1,4 @@
-import { Platform } from 'react-native';
+import { AppState, Platform } from 'react-native';
 import { isRunningInExpoGo } from 'expo';
 import Constants from 'expo-constants';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -54,7 +54,7 @@ async function ensureChannel() {
 let inflight = null;
 let tokenSub = null;
 
-async function register() {
+async function register(prompt = true) {
   // Simulators/emulators get no push token; web has no Expo push at all.
   if (!Notifications || Platform.OS === 'web' || Device?.isDevice === false) return null;
   try {
@@ -63,7 +63,7 @@ async function register() {
     const allowed = (p) => p?.granted
       || p?.ios?.status === Notifications.IosAuthorizationStatus.PROVISIONAL;
     let perm = await Notifications.getPermissionsAsync();
-    if (!allowed(perm) && perm?.canAskAgain !== false) perm = await Notifications.requestPermissionsAsync();
+    if (!allowed(perm) && prompt && perm?.canAskAgain !== false) perm = await Notifications.requestPermissionsAsync();
     if (!allowed(perm)) return null;
 
     // Android: the native FCM token — the server sends it with the Firebase
@@ -95,9 +95,29 @@ async function register() {
  * notification permission the first time. Resolves to the token or null;
  * never throws, so callers need not await it.
  */
-export function registerForPush() {
-  if (!inflight) inflight = register().finally(() => { inflight = null; });
+export function registerForPush({ prompt = true } = {}) {
+  if (!inflight) inflight = register(prompt).finally(() => { inflight = null; });
   return inflight;
+}
+
+/* Re-register (an idempotent upsert of this device's token) whenever the app
+   comes back to the foreground — never asking for permission again. Recovers a
+   device whose registration failed (offline at sign-in), whose token the server
+   dropped after FCM rejected it, or whose permission was granted later in
+   Settings; otherwise it would get no pushes until the next sign-in. At most
+   once every 10 minutes; a signed-out app is skipped (no session token). */
+const REFRESH_MS = 10 * 60 * 1000;
+let lastRefresh = 0;
+let appStateSub = null;
+function watchForeground() {
+  if (appStateSub || !Notifications) return;
+  try {
+    appStateSub = AppState.addEventListener('change', (s) => {
+      if (s !== 'active' || Date.now() - lastRefresh < REFRESH_MS) return;
+      lastRefresh = Date.now();
+      registerForPush({ prompt: false });
+    });
+  } catch (_) {}
 }
 
 /**
@@ -119,12 +139,21 @@ export async function unregisterPush() {
 
 /* ── tap → screen ──────────────────────────────────────────────────────── */
 
-/** [screen, params] for a push's data. Every screen is on OwnerNavigator's root stack. */
+/** [screen, params] for a push's data. Every screen is on OwnerNavigator's root stack.
+ *  Ids come from the server; each screen loads its record through the shop-scoped
+ *  API, so a record from another shop (or one deleted since) just fails to load. */
 function routeFor(data) {
-  const ticketId = data?.ticketId || null;
-  const threadId = data?.threadId || data?.conversationId || data?.chatId || null;
+  const str = (v) => (typeof v === 'string' && v.trim() ? v.trim() : null);
+  const ticketId = str(data?.ticketId);
+  const threadId = str(data?.threadId || data?.conversationId || data?.chatId);
+  const bookingId = str(data?.bookingId);
+  const employeeId = str(data?.technicianId || data?.entityRef);
   switch (String(data?.kind || '').toUpperCase()) {
     case 'PICKUP':
+      // Shop handover: the pickup detail screen holds the TPIN confirmation.
+      if (String(data?.statusKey || '').toUpperCase() === 'HANDOVER_REQUESTED' && bookingId) {
+        return ['OwnerPickupServiceDetail', { id: bookingId }];
+      }
       if (ticketId) return ['BookingTimeline', { ticketId }];
       return data?.bookingId ? ['OwnerPickupServiceDetail', { id: data.bookingId }] : ['OwnerPickupServiceList'];
     case 'ENQUIRY':
@@ -139,8 +168,24 @@ function routeFor(data) {
     case 'CHAT':
       return threadId ? ['ShopChatThread', { threadId }] : ['ShopChatInbox'];
     case 'STAFF_TASK':
-      // An employee started / completed / could not complete a staff task.
+      // An employee could not complete a staff task.
       return data?.taskId ? ['StaffTaskDetail', { taskId: data.taskId }] : ['StaffTasks'];
+    case 'TEAM_ATTENDANCE':
+      // Employee checked in / out.
+      return employeeId
+        ? ['OwnerEmployeeAttendance', { employee: { id: employeeId, name: str(data?.employeeName) || undefined } }]
+        : ['OwnerEmployeeList'];
+    case 'TEAM_PRESENCE':
+      // Employee outside the shop / back in the shop.
+      return employeeId
+        ? ['OwnerShopPresenceDetail', { id: employeeId, name: str(data?.employeeName) || undefined, date: str(data?.date) || undefined }]
+        : ['OwnerShopPresence'];
+    case 'SELL_PURCHASE':
+      // Customer-sell steps after the quote (inspection, final price, payment, pickup failed).
+      return bookingId ? ['BuyOrderDetail', { id: bookingId, kind: 'LEAD' }] : ['BuyOrders'];
+    case 'BUY_ENQUIRY':
+      // Buyer enquiry / purchase request / counter-offer on the shop's listings.
+      return ['SellEnquiries'];
     default:
       return ['OwnerNotifications'];
   }
@@ -199,6 +244,7 @@ export function attachPushNavigation(navigationRef) {
   if (!Notifications) return undefined;
   navRef = navigationRef;
   ensureChannel();
+  watchForeground();
   try {
     const sub = Notifications.addNotificationResponseReceivedListener(onResponse);
     // Fires as the container mounts and whenever the tree changes — e.g. the
