@@ -18,7 +18,7 @@ import { partnerSignup, requestPartnerSignupOtp } from '../api/auth';
 import { notify } from '../components/confirm';
 import { setLegalAgreed } from '../legal/legalConsent';
 import { GREEN, MUTED, INK, SCREEN_BG, FIELD_BORDER } from './authUi';
-import { ShopLocationPicker, ShopNameSuggestions } from './signupLocation';
+import { ShopLocationPicker, ShopNameSuggestions, validCoords } from './signupLocation';
 
 // Partner App "Create Account": owner + shop details → Send OTP → verify →
 // the server creates the owner and first shop and signs in (onLogin → Home).
@@ -37,7 +37,8 @@ export default function CreateAccountScreen({ navigation, onLogin }) {
   const [form, setForm] = useState({ ownerName: '', ownerMobile: '', shopName: '', shopMobile: '', shopAddress: '', ownerWhatsapp: '', pincode: '' });
   const [waSame, setWaSame] = useState(true); // "Is this your WhatsApp number?"
   const [shopFocus, setShopFocus] = useState(false);
-  const [loc, setLoc] = useState(null); // { latitude, longitude, placeId, confirmed }
+  const [loc, setLoc] = useState(null); // { latitude, longitude, placeId, confirmed, accuracy }
+  const [mapTouch, setMapTouch] = useState(false); // pause page scroll while panning the map
   // Google fills address / PIN; the owner can still edit them by hand.
   const fillAddress = (f) => {
     if (!f) return;
@@ -68,12 +69,14 @@ export default function CreateAccountScreen({ navigation, onLogin }) {
     if (!form.ownerName.trim()) return "Enter the owner's full name";
     if (form.ownerMobile.length !== 10) return "Enter the owner's 10-digit mobile number";
     if (!form.shopName.trim()) return 'Enter the shop name';
+    if (!loc?.confirmed || !validCoords(loc.latitude, loc.longitude)) return 'Confirm your shop location on the map';
     if (form.shopMobile && form.shopMobile.length !== 10) return 'Enter a 10-digit shop contact number';
     if (!form.shopAddress.trim()) return 'Enter the shop address';
     if (!waSame && form.ownerWhatsapp.length !== 10) return 'Enter the 10-digit WhatsApp number';
     if (form.pincode && !/^\d{6}$/.test(form.pincode)) return 'Enter a 6-digit PIN code';
     return null;
   };
+  const formIssue = validate(); // Send OTP stays disabled until this is null
 
   const sendOtp = async ({ resend = false } = {}) => {
     if (busyRef.current) return;
@@ -160,6 +163,7 @@ export default function CreateAccountScreen({ navigation, onLogin }) {
         contentContainerStyle={{ flexGrow: 1, paddingTop: insets.top + 72, paddingBottom: insets.bottom + 28, paddingHorizontal: isWide ? 32 : 22 }}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
+        scrollEnabled={!mapTouch}
       >
         <View style={{ width: '100%', maxWidth: isWide ? 480 : undefined, alignSelf: 'center' }}>
           {step === 'FORM' ? (
@@ -190,27 +194,36 @@ export default function CreateAccountScreen({ navigation, onLogin }) {
               </Section>
 
               <Section title="Shop Information">
-                <Field icon={Store} label="Shop Name" value={form.shopName} onChangeText={set('shopName')} placeholder="Search on Google or type shop name" autoCapitalize="words"
+                <Field icon={Store} label="Shop Name" value={form.shopName} placeholder="Search on Google or type shop name" autoCapitalize="words"
+                  onChangeText={(v) => {
+                    set('shopName')(v);
+                    // Renamed after confirming → confirm the pin again.
+                    setLoc((l) => (l?.confirmed ? { ...l, confirmed: false } : l));
+                  }}
                   onFocus={() => setShopFocus(true)} onBlur={() => setTimeout(() => setShopFocus(false), 250)} />
                 <ShopNameSuggestions query={form.shopName} focused={shopFocus} onPick={(d) => {
                   setShopFocus(false);
                   setForm((s) => ({
                     ...s,
                     shopName: d.name || s.shopName,
-                    shopMobile: s.shopMobile || (d.phone.length === 10 ? d.phone : ''),
+                    // Only a valid Indian mobile is used as the shop contact.
+                    shopMobile: s.shopMobile || (/^[6-9]\d{9}$/.test(d.phone) ? d.phone : ''),
                     shopAddress: d.address || s.shopAddress,
-                    pincode: d.pincode || s.pincode,
+                    pincode: /^\d{6}$/.test(d.pincode || '') ? d.pincode : s.pincode,
                   }));
-                  if (d.latitude != null) setLoc({ latitude: d.latitude, longitude: d.longitude, placeId: d.placeId, confirmed: false });
+                  setLoc({ latitude: d.latitude, longitude: d.longitude, placeId: d.placeId, confirmed: false, accuracy: null });
+                  setError(null);
                 }} />
-                <Field icon={Phone} label="Shop Contact Number" value={form.shopMobile} onChangeText={(v) => set('shopMobile')(digits10(v))} placeholder="9876543210" keyboardType="number-pad" prefix="+91" />
+                <ShopLocationPicker value={loc} shopName={form.shopName} address={form.shopAddress} onMapTouch={setMapTouch}
+                  onChange={(next, filled) => { if (next) setLoc(next); fillAddress(filled); setError(null); }} />
                 <Field icon={MapPin} label="Shop Address" value={form.shopAddress} onChangeText={set('shopAddress')} placeholder="Door no, street, area, city" multiline />
                 <Field icon={MapPin} label="PIN Code" value={form.pincode} onChangeText={(v) => set('pincode')(String(v).replace(/\D/g, '').slice(0, 6))} placeholder="641001" keyboardType="number-pad" />
-                <ShopLocationPicker value={loc} onChange={(next, filled) => { setLoc(next); fillAddress(filled); }} />
+                <Field icon={Phone} label="Shop Contact Number" value={form.shopMobile} onChangeText={(v) => set('shopMobile')(digits10(v))} placeholder="9876543210" keyboardType="number-pad" prefix="+91" />
               </Section>
 
               <ErrorText msg={error} />
-              <PrimaryButton label="Send OTP" loading={loading} onPress={() => sendOtp()} />
+              <PrimaryButton label="Send OTP" loading={loading} disabled={!!formIssue} onPress={() => sendOtp()} />
+              {formIssue ? <Text style={{ marginTop: 8, fontSize: 12, color: MUTED, textAlign: 'center' }}>{formIssue}</Text> : null}
             </>
           ) : (
             <>
@@ -330,10 +343,10 @@ function ErrorText({ msg }) {
   return <Text style={{ marginTop: 14, fontSize: 13, fontWeight: '600', color: DANGER }}>{msg}</Text>;
 }
 
-function PrimaryButton({ label, loading, onPress }) {
+function PrimaryButton({ label, loading, disabled, onPress }) {
   return (
-    <Pressable onPress={onPress} disabled={loading} accessibilityRole="button" accessibilityLabel={label}
-      style={{ marginTop: 18, height: 52, borderRadius: 999, backgroundColor: GREEN, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', opacity: loading ? 0.8 : 1 }}>
+    <Pressable onPress={onPress} disabled={loading || disabled} accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ disabled: !!(loading || disabled) }}
+      style={{ marginTop: 18, height: 52, borderRadius: 999, backgroundColor: GREEN, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', opacity: disabled ? 0.45 : loading ? 0.8 : 1 }}>
       {loading ? <ActivityIndicator color="#FFFFFF" /> : (
         <>
           <Text style={{ fontSize: 15.5, fontWeight: '800', color: '#FFFFFF', letterSpacing: 0.3 }}>{label}</Text>

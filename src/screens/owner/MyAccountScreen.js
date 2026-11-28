@@ -61,15 +61,11 @@ const BG = brand.lightGray;     // Page background
 const DANGER = brand.red;
 const ICON_STROKE = 2; // ONE weight for every icon on the screen.
 
-// Icon-tile tones: solid brand colour with a white glyph. Rows pick a NAME,
+// Icon-tile tones: light teal tint with a teal outline glyph (matches Security). Rows pick a NAME,
 // so the colours stay in this one table.
+const TONE_SOFT = { bg: '#E6F2F4', fg: '#035C6C' }; // same as Biometric / MPIN / TPIN rows
 const TONE = {
-  teal:   { bg: brand.teal,   fg: '#FFFFFF' },
-  navy:   { bg: brand.navy,   fg: '#FFFFFF' },
-  blue:   { bg: brand.blue,   fg: '#FFFFFF' },
-  green:  { bg: brand.green,  fg: '#FFFFFF' },
-  orange: { bg: brand.orange, fg: '#FFFFFF' },
-  red:    { bg: brand.red,    fg: '#FFFFFF' },
+  teal: TONE_SOFT, navy: TONE_SOFT, blue: TONE_SOFT, green: TONE_SOFT, orange: TONE_SOFT, red: TONE_SOFT,
 };
 
 const softShadow = {
@@ -708,7 +704,7 @@ function OwnerTechRow({ ownerName }) {
   return (
     <View className="flex-row items-center" style={LIST_ROW}>
       <View style={{ ...ICON_TILE, backgroundColor: TONE.teal.bg }}>
-        <Ionicons name="construct" size={rf(18)} color={TONE.teal.fg} />
+        <Ionicons name="construct-outline" size={rf(18)} color={TONE.teal.fg} />
       </View>
       <View className="flex-1">
         <Text style={{ fontSize: 13.5, fontWeight: '700', color: DARK }}>Owner as Technician</Text>
@@ -744,7 +740,7 @@ function AppLockRow() {
   return (
     <View className="flex-row items-center" style={LIST_ROW}>
       <View style={{ ...ICON_TILE, backgroundColor: TONE.teal.bg }}>
-        <Ionicons name="lock-closed" size={rf(18)} color={TONE.teal.fg} />
+        <Ionicons name="lock-closed-outline" size={rf(18)} color={TONE.teal.fg} />
       </View>
       <View className="flex-1">
         <Text style={{ fontSize: 13.5, fontWeight: '700', color: DARK }}>App Lock</Text>
@@ -764,19 +760,19 @@ function AppLockRow() {
 
 // Solid glyphs for the menu rows.
 const SOLID = {
-  personal: ion('person'),
-  subscription: mci('crown'),
-  qr: ion('qr-code'),
-  shop: ion('storefront'),
-  kyc: ion('document-text'),
-  pickup: mci('truck'),
-  orders: ion('bag-handle'),
-  employees: ion('people'),
-  leave: mci('calendar-clock'),
-  terms: mci('script-text'),
-  privacy: mci('shield-check'),
-  faq: ion('help-circle'),
-  support: ion('headset'),
+  personal: ion('person-outline'),
+  subscription: mci('crown-outline'),
+  qr: ion('qr-code-outline'),
+  shop: ion('storefront-outline'),
+  kyc: ion('document-text-outline'),
+  pickup: mci('truck-outline'),
+  orders: ion('bag-handle-outline'),
+  employees: ion('people-outline'),
+  leave: mci('calendar-clock-outline'),
+  terms: mci('script-text-outline'),
+  privacy: mci('shield-check-outline'),
+  faq: ion('help-circle-outline'),
+  support: ion('headset-outline'),
 };
 
 // One list row: [solid brand tile + white glyph] Title / subtitle  ›

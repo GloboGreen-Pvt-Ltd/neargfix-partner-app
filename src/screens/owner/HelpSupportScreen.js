@@ -6,6 +6,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { ChevronRight, ShieldCheck, Store } from 'lucide-react-native';
 import { ion } from '../../components/dashboard/solidIcons';
+import { CallLogo, GmailLogo, WhatsAppLogo } from '../../components/BrandLogos';
 import { T } from '../../components/dashboard/theme';
 import { brand } from '../../theme/colors';
 import { getSupportContacts } from '../../api/masterData';
@@ -184,9 +185,9 @@ export default function HelpSupportScreen({ navigation }) {
         <View style={capStyle}>
           <SectionLabel subtitle="Choose how you'd like to reach us">Contact Us</SectionLabel>
           <View style={LIST_STYLE}>
-            <ContactRow Glyph={GLYPH.call} tone="teal" label="Call Us" value={phone} action="Call" onPress={call} />
-            <ContactRow Glyph={GLYPH.whatsapp} tone="whatsapp" label="WhatsApp" value={DEFAULT_WHATSAPP} action="Chat" onPress={whatsapp} />
-            <ContactRow Glyph={GLYPH.email} tone="blue" label="Email" value={email} action="Mail" onPress={mail} last />
+            <ContactRow Logo={CallLogo} label="Call Us" value={phone} action="Call" onPress={call} />
+            <ContactRow Logo={WhatsAppLogo} label="WhatsApp" value={DEFAULT_WHATSAPP} action="Chat" onPress={whatsapp} />
+            <ContactRow Logo={GmailLogo} label="Email" value={email} action="Mail" onPress={mail} last />
           </View>
 
           {/* The shop details that go along with WhatsApp / email messages. */}
@@ -245,8 +246,7 @@ function SectionLabel({ children, subtitle }) {
 
 // One contact option: [solid tile + white glyph] label / number, action pill.
 // The value shrinks to fit rather than cutting the email off.
-function ContactRow({ Glyph, tone, label, value, action, onPress, last }) {
-  const color = TONE[tone] || TONE.teal;
+function ContactRow({ Logo, label, value, action, onPress, last }) {
   return (
     <Pressable
       onPress={onPress}
@@ -256,8 +256,9 @@ function ContactRow({ Glyph, tone, label, value, action, onPress, last }) {
       className="flex-row items-center"
       style={{ minHeight: rs(66), paddingVertical: rs(11), borderBottomWidth: last ? 0 : 1, borderBottomColor: '#F1F3F5' }}
     >
-      <View style={{ width: rs(42), height: rs(42), borderRadius: rs(12), backgroundColor: color, alignItems: 'center', justifyContent: 'center', marginRight: rs(12) }}>
-        <Glyph size={rf(20)} color="#FFFFFF" />
+      {/* Original brand logos on a white tile. */}
+      <View style={{ width: rs(42), height: rs(42), borderRadius: rs(12), backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#EEF0F2', alignItems: 'center', justifyContent: 'center', marginRight: rs(12) }}>
+        <Logo size={rf(26)} />
       </View>
       <View className="flex-1" style={{ marginRight: rs(8) }}>
         <Text style={{ fontSize: 13.5, fontWeight: '700', color: DARK }} numberOfLines={1}>{label}</Text>

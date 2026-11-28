@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -315,6 +315,11 @@ export function BookingTile({ ticket, row = true, onPress, onHistory, onInvoice 
     >
       <View style={st.refRow}>
         <Text style={st.ref} numberOfLines={1}>#{no}</Text>
+        {ticket.serviceCycleNo ? (
+          <Text style={{ fontSize: 10, fontWeight: '800', color: '#035C6C', backgroundColor: '#E5F3F5', borderRadius: 6, paddingHorizontal: 5, paddingVertical: 1, marginRight: 4 }} numberOfLines={1}>
+            {`Re-Service ${String(ticket.serviceCycleNo).padStart(2, '0')}`}
+          </Text>
+        ) : null}
         <View style={st.amountChip}>
           <Text style={st.amountText} numberOfLines={1}>{inr(pay.amount)}</Text>
         </View>
@@ -393,7 +398,15 @@ export default function BookingStatusReportScreen({ navigation, route }) {
     label = 'Total Booking',
     statusList = [],
     icon = 'TOTAL_BOOKING',
+    // Service Status card (server mode): the SAME server classification that
+    // counted the card pages this list, so its total always equals the card.
+    bucket = null,
+    kind = 'ALL',
+    from = null,
+    to = null,
+    periodLabel: periodLabelParam = null,
   } = route?.params || {};
+  const serverMode = !!bucket;
 
   const meta = TILE_META[icon] || FALLBACK_META;
 
@@ -408,6 +421,21 @@ export default function BookingStatusReportScreen({ navigation, route }) {
   const [query, setQuery] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
   const [sub, setSub] = useState('ALL');
+  // Server mode: total of the card, paging, newest-request-wins guard, debounced search.
+  const [total, setTotal] = useState(null);
+  const [hasMore, setHasMore] = useState(false);
+  const [serverQ, setServerQ] = useState('');
+  const pageRef = useRef(0);
+  const seqRef = useRef(0);
+  const moreRef = useRef(false);
+  useEffect(() => {
+    if (!serverMode) return undefined;
+    const t = setTimeout(() => setServerQ(query.trim()), 350);
+    return () => clearTimeout(t);
+  }, [query, serverMode]);
+  const fetchPage = useCallback((page) => ticketApi.get('/tickets/status-report/list', {
+    query: { bucket, kind: kind || 'ALL', from: from || undefined, to: to || undefined, q: serverQ || undefined, page, size: 30 },
+  }), [bucket, kind, from, to, serverQ]);
 
   // `load` keys off the CSV, not the array: navigating here without params
   // materializes a fresh default array on every render, which as a useCallback
@@ -423,6 +451,16 @@ export default function BookingStatusReportScreen({ navigation, route }) {
     else setLoading(true);
     setError(null);
     try {
+      if (serverMode) {
+        const my = ++seqRef.current;
+        const pg = await fetchPage(0);
+        if (my !== seqRef.current) return;
+        setTickets(Array.isArray(pg?.content) ? pg.content : []);
+        setTotal(Number(pg?.totalElements ?? 0));
+        pageRef.current = 0;
+        setHasMore(pg?.last === false);
+        return;
+      }
       const merged = await fetchStatusTickets(statusCsv ? statusCsv.split(',') : []);
       const from = startOfPeriod(period);
       const to = endOfPeriod(period);
@@ -443,18 +481,31 @@ export default function BookingStatusReportScreen({ navigation, route }) {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [statusCsv, period]);
+  }, [statusCsv, period, serverMode, fetchPage]);
 
   useEffect(() => { load(); }, [load]);
 
+  const loadMore = useCallback(async () => {
+    if (!serverMode || !hasMore || moreRef.current) return;
+    moreRef.current = true;
+    const my = seqRef.current;
+    try {
+      const pg = await fetchPage(pageRef.current + 1);
+      if (my !== seqRef.current) return;
+      pageRef.current += 1;
+      setTickets((list) => [...list, ...(Array.isArray(pg?.content) ? pg.content : [])]);
+      setHasMore(pg?.last === false);
+    } catch (_) { /* keep what is shown; scrolling again retries */ } finally { moreRef.current = false; }
+  }, [serverMode, hasMore, fetchPage]);
+
   const periodLabel = useMemo(
-    () => (PERIODS.find((p) => p.value === period)?.label) || 'All Time',
-    [period],
+    () => (serverMode ? periodLabelParam : null) || (PERIODS.find((p) => p.value === period)?.label) || 'All Time',
+    [period, serverMode, periodLabelParam],
   );
 
-  const shown = useMemo(() => tickets.filter((t) => (
+  const shown = useMemo(() => (serverMode ? tickets : tickets.filter((t) => (
     (sub === 'ALL' || String(t.status || '').toUpperCase() === sub) && ticketMatches(t, query)
-  )), [tickets, sub, query]);
+  ))), [tickets, sub, query, serverMode]);
 
   const totalPrice = useMemo(() => shown.reduce((sum, t) => {
     const v = Number(t.finalPrice ?? estimatedTotalOf(t));
@@ -475,8 +526,8 @@ export default function BookingStatusReportScreen({ navigation, route }) {
     setSearchOpen((v) => !v);
   };
 
-  const n = shown.length;
-  const noun = n === 1 ? 'booking' : 'bookings';
+  const n = serverMode ? (total ?? 0) : shown.length;
+  const noun = serverMode ? (n === 1 ? 'service' : 'services') : (n === 1 ? 'booking' : 'bookings');
   const data = loading || error ? [] : withGhost(shown, numCols);
   const subLabel = sub === 'ALL' ? label : (SUB_META[sub]?.label || sub);
 
@@ -502,7 +553,7 @@ export default function BookingStatusReportScreen({ navigation, route }) {
         onBack={() => navigation.goBack()}
         searchOpen={searchOpen}
         onToggleSearch={toggleSearch}
-        right={(
+        right={serverMode ? null : (
           <ReportHeaderButton
             Icon={Calendar}
             label={`Period: ${periodLabel}`}
@@ -539,10 +590,16 @@ export default function BookingStatusReportScreen({ navigation, route }) {
             showsVerticalScrollIndicator={false}
             refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => load(true)} tintColor={RC.teal} colors={[RC.teal]} />}
             contentContainerStyle={{ ...reportStyles.listPad, paddingBottom: bottomPad, ...capW }}
+            onEndReached={serverMode ? loadMore : undefined}
+            onEndReachedThreshold={0.4}
             ListHeaderComponent={loading || error ? null : (
               <Text style={st.summary} numberOfLines={1}>
                 {n} {noun}
-                <Text style={st.summaryMuted}>  ·  ₹{fmtINR(totalPrice) || '0'} total</Text>
+                {serverMode ? (
+                  <Text style={st.summaryMuted}>  ·  current status</Text>
+                ) : (
+                  <Text style={st.summaryMuted}>  ·  ₹{fmtINR(totalPrice) || '0'} total</Text>
+                )}
               </Text>
             )}
             ListEmptyComponent={(

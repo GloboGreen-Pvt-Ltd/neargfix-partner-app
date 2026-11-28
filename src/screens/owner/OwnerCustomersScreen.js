@@ -91,9 +91,14 @@ export default function OwnerCustomersScreen({ navigation }) {
           {open ? <ChevronUp size={18} color="#9CA3AF" /> : <ChevronDown size={18} color="#9CA3AF" />}
         </Pressable>
         {open ? c.bookings.map((t) => (
-          <Pressable key={t.id} onPress={() => navigation.navigate('TicketDetail', { ticketId: t.id })} className="flex-row items-center active:opacity-80" style={{ paddingHorizontal: 12, paddingVertical: 9, borderTopWidth: 1, borderTopColor: '#F3F4F6' }}>
+          <Pressable key={t.id} onPress={() => navigation.navigate('TicketDetail', { ticketId: t.id, recordPicked: true })} className="flex-row items-center active:opacity-80" style={{ paddingHorizontal: 12, paddingVertical: 9, borderTopWidth: 1, borderTopColor: '#F3F4F6' }}>
             <View style={{ flex: 1, minWidth: 0 }}>
-              <Text style={{ fontSize: 12, fontWeight: '800', color: TEAL }} numberOfLines={1}>#{t.trackingId || t.id}</Text>
+              <Text style={{ fontSize: 12, fontWeight: '800', color: TEAL }} numberOfLines={1}>
+                #{t.trackingId || t.id}
+                <Text style={{ color: '#6B7280', fontWeight: '700' }}>
+                  {t.serviceCycleNo ? `  · Re-Service ${String(t.serviceCycleNo).padStart(2, '0')}` : '  · Original Service'}
+                </Text>
+              </Text>
               <Text style={{ fontSize: 12, color: '#111111', marginTop: 1 }} numberOfLines={1}>{t.deviceDisplayName || t.modelName || 'Device'}</Text>
             </View>
             <Text style={{ fontSize: 11, color: '#6B7280', marginLeft: 8 }}>{fmtDate(t.createdAt)}</Text>

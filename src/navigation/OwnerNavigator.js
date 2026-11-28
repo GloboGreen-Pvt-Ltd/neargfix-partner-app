@@ -65,6 +65,7 @@ import PickupHistoryScreen from '../screens/owner/AllBooking/PickupHistoryScreen
 import DeliveryInvoiceScreen from '../screens/owner/AllBooking/DeliveryInvoiceScreen';
 import InvoiceGeneratorScreen from '../screens/owner/AllBooking/InvoiceGeneratorScreen';
 import DeliveryInvoiceReportScreen from '../screens/owner/AllBooking/DeliveryInvoiceReportScreen';
+import InvoiceHistoryScreen from '../screens/owner/AllBooking/InvoiceHistoryScreen';
 import AssignTechnicianScreen from '../screens/owner/AssignTechnicianScreen';
 import InventoryScreen from '../screens/owner/InventoryScreen';
 import OwnerSellSparePartsScreen from '../screens/owner/OwnerSellSparePartsScreen';
@@ -607,6 +608,7 @@ export default function OwnerNavigator({ session, onLogout }) {
       <Stack.Screen name="DeliveryInvoice" component={DeliveryInvoiceScreen} options={{ headerShown: false }} />
       <Stack.Screen name="InvoiceGenerator" component={InvoiceGeneratorScreen} options={{ headerShown: false }} />
       <Stack.Screen name="DeliveryInvoiceReport" component={DeliveryInvoiceReportScreen} options={{ headerShown: false }} />
+      <Stack.Screen name="InvoiceHistory" component={InvoiceHistoryScreen} options={{ headerShown: false }} />
       {/* Stack copy of the Bookings tab list. Pushed (not switched-to) so a
           status preset — e.g. { preset: 'ACTIVE' } from the Home snapshot —
           lives on its own screen instance with a real back button, instead of
