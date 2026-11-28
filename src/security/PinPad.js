@@ -1,6 +1,6 @@
 // Compact 6-digit PIN pad: masked dots, numeric keypad, auto-submit at 6 digits.
 import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Keyboard, Platform, Pressable, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Keyboard, Platform, Pressable, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
 /** Current on-screen keyboard height (0 when hidden) so PIN screens can stay above it. */
@@ -19,6 +19,12 @@ export const C = { bg: '#FFFFFF', primary: '#035C6C', border: '#E5E7EB', text: '
 export default function PinPad({ title, subtitle, error, busy, onComplete, onBiometric, resetKey, footer, systemKeyboard, hideIcon }) {
   const [pin, setPin] = useState('');
   const inputRef = useRef(null);
+  // Fixed box size from the screen width. Boxes used to be flex:1 (max 46) in a stretched
+  // row; inside the keyboard-lifted TPIN sheet that row could be measured at zero width,
+  // collapsing the six boxes into thin lines until a later re-layout corrected it.
+  const { width: screenW } = useWindowDimensions();
+  const boxW = Math.max(30, Math.min(systemKeyboard ? 46 : 40, Math.floor((screenW - 48 - 6 * 8) / 6)));
+  const boxH = systemKeyboard ? 52 : 46;
   useEffect(() => { setPin(''); if (systemKeyboard) setTimeout(() => { inputRef.current?.blur(); inputRef.current?.focus(); }, 300); }, [resetKey, error, systemKeyboard]);
   const type = (v) => {
     if (busy) return;
@@ -63,7 +69,7 @@ export default function PinPad({ title, subtitle, error, busy, onComplete, onBio
       )}
       {title ? <Text style={{ fontSize: 19, fontWeight: '800', color: C.text }}>{title}</Text> : null}
       {subtitle ? <Text style={{ fontSize: 13, color: C.muted, marginTop: 4, textAlign: 'center' }}>{subtitle}</Text> : null}
-      <View style={{ flexDirection: 'row', marginTop: 22, alignSelf: 'stretch', justifyContent: 'center' }}>
+      <View style={{ flexDirection: 'row', marginTop: 22, alignSelf: 'center', width: 6 * (boxW + 8) }}>
         {[0, 1, 2, 3, 4, 5].map((i) => {
           const filled = i < pin.length;
           const active = i === pin.length && !busy;
@@ -71,7 +77,7 @@ export default function PinPad({ title, subtitle, error, busy, onComplete, onBio
             <View
               key={i}
               style={{
-                flex: 1, maxWidth: systemKeyboard ? 46 : 40, height: systemKeyboard ? 52 : 46, borderRadius: 12, marginHorizontal: 4, alignItems: 'center', justifyContent: 'center',
+                width: boxW, height: boxH, borderRadius: 12, marginHorizontal: 4, alignItems: 'center', justifyContent: 'center',
                 borderWidth: active || filled || error ? 1.5 : 1, borderColor: error ? C.error : active || filled ? C.primary : C.border,
                 backgroundColor: filled ? C.tint : C.bg,
               }}

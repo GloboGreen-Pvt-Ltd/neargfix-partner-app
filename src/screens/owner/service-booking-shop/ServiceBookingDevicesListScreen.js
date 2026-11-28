@@ -214,7 +214,6 @@ export default function ServiceBookingDevicesListScreen({ navigation, route }) {
   // device ticket of this submit; dropped on success, failure or expiry.
   const [pinOpen, setPinOpen] = useState(false);
   const pinRef = useRef(null);
-  const reopenedRef = useRef(false);
 
   const totalFor = (d) => (d.services || []).reduce((s, x) => s + (Number(x.price) || 0), 0);
   const grandTotal = devices.reduce((s, d) => s + totalFor(d), 0);
@@ -377,23 +376,14 @@ export default function ServiceBookingDevicesListScreen({ navigation, route }) {
       // same Thank You / Receipt / Barcode flow as a fresh booking.
       if (params.editMode && params.editTicketId) {
         const d = devices[0] || {};
-        // Re-Service: reopen the delivered ticket (back to CREATED, fresh step
-        // cycle) before the PUT writes the new repair onto it. Once only — a
-        // retry after a failed PUT must not hit the "not delivered" 409.
-        if (params.reService && !reopenedRef.current) {
-          await ticketApi.post(`/tickets/${params.editTicketId}/reopen`);
-          reopenedRef.current = true;
-        }
+        // (Re-Service never comes through here: it CREATES a linked ticket
+        // below — the delivered ticket is never reopened or overwritten.)
         // reEstimate tells the server which action this is: only Re-Estimate may
-        // re-quote the booking. Edit / Price Revised / Re-Service send false, so
-        // the ticket keeps its status (e.g. IN_REPAIR stays IN_REPAIR).
+        // re-quote the booking. Edit / Price Revised send false, so the ticket
+        // keeps its status (e.g. IN_REPAIR stays IN_REPAIR).
         const res = await ticketApi.put(`/tickets/${params.editTicketId}`, {
           body: { ...buildTicketBody(d), reEstimate: !!params.reEstimate },
         });
-        if (params.reService) {
-          navigation.replace('BookingThankYou', { customer: params.customer, devices, tickets: [res], editMode: true });
-          return;
-        }
 
         // A saved re-estimate moves the ticket to QUOTED — the status the app
         // already labels "Re-Estimated" on the card badge and counts in the
@@ -448,10 +438,21 @@ export default function ServiceBookingDevicesListScreen({ navigation, route }) {
       // Numbering: one device → GTS-001. Several → the first draws the booking
       // number as GTS-001-A and the rest join it (-B, -C …). Adding to an
       // existing booking (params.addToBookingNumber) joins every device to it.
+      // Re-Service: a NEW ticket linked to the delivered one — the server numbers
+      // it (GTS-231-R01) and never touches the delivered ticket. The request id
+      // makes a retry after a lost response return the same record, not a second.
+      const reServiceLink = params.reServiceOf ? {
+        reServiceOf: params.reServiceOf,
+        serviceType: params.serviceType,
+        returnReason: params.returnReason,
+        reServiceNotes: params.reServiceNotes,
+        reServiceRequestId: params.reServiceRequestId,
+      } : null;
       for (let i = 0; i < devices.length; i++) {
         if (createdRef.current[i]) continue; // already booked on a previous attempt
         const bookingNumber = params.addToBookingNumber || createdRef.current[0]?.bookingNumber;
-        const numbering = bookingNumber
+        const numbering = reServiceLink ? reServiceLink
+          : bookingNumber
           ? { bookingNumber }
           : (devices.length > 1 ? { multiDevice: true } : {});
         const res = await ticketApi.post('/tickets', {

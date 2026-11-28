@@ -149,17 +149,18 @@ function routeFor(data) {
   const bookingId = str(data?.bookingId);
   const employeeId = str(data?.technicianId || data?.entityRef);
   switch (String(data?.kind || '').toUpperCase()) {
+    // A booking push opens Booking Details (TicketDetail), not the Service History timeline.
     case 'PICKUP':
       // Shop handover: the pickup detail screen holds the TPIN confirmation.
       if (String(data?.statusKey || '').toUpperCase() === 'HANDOVER_REQUESTED' && bookingId) {
         return ['OwnerPickupServiceDetail', { id: bookingId }];
       }
-      if (ticketId) return ['BookingTimeline', { ticketId }];
+      if (ticketId) return ['TicketDetail', { ticketId }];
       return data?.bookingId ? ['OwnerPickupServiceDetail', { id: data.bookingId }] : ['OwnerPickupServiceList'];
     case 'ENQUIRY':
     case 'BOOKING':
     case 'TICKET_STATUS':
-      return ticketId ? ['BookingTimeline', { ticketId }] : ['BookingList'];
+      return ticketId ? ['TicketDetail', { ticketId }] : ['BookingList'];
     case 'SELL_REQUEST':
       return ['OwnerSellRequests'];
     case 'BUY_ORDER':

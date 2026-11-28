@@ -157,7 +157,8 @@ export default function OwnerNotificationsScreen({ navigation }) {
       return;
     }
     if (n.ticketId) {
-      navigation.navigate('BookingTimeline', { ticketId: n.ticketId });
+      // Booking Details, same as tapping the push.
+      navigation.navigate('TicketDetail', { ticketId: n.ticketId });
       return;
     }
     navigation.navigate(cat === 'PICKUP' ? 'OwnerPickupServiceList' : 'BookingList');

@@ -1345,7 +1345,10 @@ export default function JobsScreen({ navigation, route }) {
         <View style={tileText}>
         {/* Tracking ID (left) · Est (right), then Bal (left) · Paid (right). */}
         <View className="flex-row items-center" style={{ marginTop: 8 }}>
-          <Text style={{ flex: 1, fontSize: 11, fontWeight: '800', color: ACCENT_GREEN }} numberOfLines={1}>#{trackingId}</Text>
+          <Text style={{ flex: 1, fontSize: 11, fontWeight: '800', color: ACCENT_GREEN }} numberOfLines={1}>
+            #{trackingId}
+            {item.serviceCycleNo ? <Text style={{ color: '#035C6C' }}>{`  · Re-Service ${String(item.serviceCycleNo).padStart(2, '0')}`}</Text> : null}
+          </Text>
           <View style={{ marginLeft: 6, backgroundColor: ACCENT_GREEN, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3 }}>
             <Text style={{ color: '#FFFFFF', fontSize: 14, fontWeight: '800' }} numberOfLines={1}>{amountStr}</Text>
           </View>

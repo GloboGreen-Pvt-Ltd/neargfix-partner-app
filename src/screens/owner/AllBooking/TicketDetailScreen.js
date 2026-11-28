@@ -59,6 +59,7 @@ import SafeModal, { ModalInsets } from '../../../components/SafeModal';
 import { ticketApi } from '../../../api/client';
 import { getRepairDelivery } from '../../../api/repairDelivery';
 import { getModelsByBrand } from '../../../api/masterData';
+import { resolveDeviceImageSource } from '../../../utils/images';
 // The receipt lives in its own module so the Bookings list can share the same
 // one from its actions sheet.
 import { groupServiceCharges, priceItemsFromTicket, paymentFromTicket } from './ReceiptCard';
@@ -88,6 +89,7 @@ import DeviceSecurityLockSheet from '../service-booking-shop/DeviceSecurityLockS
 import { useImeiApplies } from '../../../utils/imeiPolicy';
 import SlideToComplete from '../../../components/SlideToComplete';
 import CompletedTickModal from '../../../components/CompletedTickModal';
+import { DeliveryHistory, ServiceRecordsBar, preferredRecord, recordTitle, useServiceRecords } from './ReServiceParts';
 
 // Swiggy / Zomato green palette — same as the rest of the booking flow.
 const BRAND_GREEN = '#035C6C';
@@ -186,6 +188,16 @@ const toneFor = (key) => `${HOME_TILE_TONES[ICON_TONE[key] ?? 0]}CC`;
 const DELIVERED_TILES = [
   { key: 'reservice', label: 'Re-Service', icon: RefreshCcw },
 ];
+// A delivered service is a closed record (the server refuses edits too):
+// only these read-only actions — no Edit / Re-Estimate / Price Revised /
+// Reschedule / technician change / cancel / invoice or delivery again.
+const HISTORY_TILES = [
+  { key: 'history',     label: 'View History',     icon: ListChecks },
+  { key: 'viewinvoice', label: 'View Invoice',     icon: Eye },
+  { key: 'share',       label: 'Receipt',          icon: Share2 },
+  { key: 'barcode',     label: 'QR',               icon: QrCode },
+  { key: 'delivery',    label: 'Delivery Details', icon: Truck },
+];
 
 // "Update Status" auto-advances the booking one stage at a time along this
 // owner-facing flow — the owner no longer hand-picks an arbitrary status.
@@ -281,6 +293,12 @@ export default function TicketDetailScreen({ route, navigation }) {
   const [error, setError] = useState(null);
   const [shareOpen, setShareOpen] = useState(false);
   const [qrTicketId, setQrTicketId] = useState(null); // Print QR Label popup
+  // Re-Service chain (Original | Re-Service 01 | …) + the Re-Service sheet.
+  // Re-Service ONLY creates linked records — never the old reopen (it overwrote
+  // the delivered service). Unsupported / unreachable → "unavailable, retry".
+  const { records: serviceRecords, supported: reServiceSupported, reload: reloadServiceRecords } = useServiceRecords(ticketId);
+  const scrollRef = useRef(null);
+  const deliveryY = useRef(null); // DELIVERY HISTORY offset, for the "Delivery Details" action
 
   /**
    * Arriving from the Re-Estimated list with `autoEdit` opens the edit wizard
@@ -310,10 +328,20 @@ export default function TicketDetailScreen({ route, navigation }) {
       : route?.params?.autoReEstimate ? 'reestimate' : null;
   useEffect(() => {
     if (!autoMode || !ticket || autoEditFired.current) return;
+    // Re-Service first needs to know whether the server makes linked records.
+    if (autoMode === 'reservice' && reServiceSupported === null) return;
     autoEditFired.current = true;
     Promise.resolve(onAction(autoMode)).finally(() => setAutoEditLaunched(true));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ticket, autoMode]);
+  }, [ticket, autoMode, reServiceSupported]);
+  // Opened on an older record of a chain → show the active service (else the
+  // latest). A record the owner picked on the tabs stays put.
+  useEffect(() => {
+    if (!serviceRecords?.length || autoMode || route?.params?.recordPicked) return;
+    const pref = preferredRecord(serviceRecords);
+    if (pref && pref.id !== ticketId) navigation.replace(route.name, { ticketId: pref.id, recordPicked: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [serviceRecords]);
   const [statusOpen, setStatusOpen] = useState(false);
   const [pickedStatus, setPickedStatus] = useState(null);
   const [rejectReason, setRejectReason] = useState('');
@@ -323,6 +351,26 @@ export default function TicketDetailScreen({ route, navigation }) {
   const [menuOpen, setMenuOpen] = useState(false);
   // Latest "Service Re-estimated" history step, when the booking has one.
   const [reEstimateEvent, setReEstimateEvent] = useState(null);
+  // Header thumbnail: most tickets carry no deviceImageUrl of their own, so fall
+  // back to the master-catalogue model image (same as Service History / Job Details).
+  // The ticket's own URL is often a Cloudinary .avif (blank on Android), so it is
+  // normalised, and if it still fails to load the catalogue image is used.
+  const [modelImage, setModelImage] = useState(null);
+  const [deviceImgFailed, setDeviceImgFailed] = useState(false);
+  useEffect(() => {
+    setModelImage(null);
+    setDeviceImgFailed(false);
+    if (!ticket?.brandId || !ticket?.modelId) return undefined;
+    let active = true;
+    getModelsByBrand(ticket.brandId)
+      .then((list) => {
+        const m = (list || []).find((x) => x.id === ticket.modelId);
+        if (active) setModelImage(resolveDeviceImageSource({ url: m?.imageUrl, base64: m?.imageBase64 }));
+      })
+      .catch(() => {});
+    return () => { active = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ticket?.brandId, ticket?.modelId, ticket?.deviceImageUrl, ticket?.modelImageUrl]);
   // Device photos viewer: index of the photo open full-screen, null = closed.
   const [photoIndex, setPhotoIndex] = useState(null);
   const menuPan = useRef(PanResponder.create({
@@ -785,6 +833,8 @@ export default function TicketDetailScreen({ route, navigation }) {
   // own line. deviceDisplayName is "Apple iPhone 11 · A2221 (4 GB / 64 GB / Black)".
   const shownDevice = /^(.*?)(?: · ([^()]+?))?(?: \(([^)]*)\))?$/.exec(String(ticket.deviceDisplayName || '').trim()) || [];
   const modelName = (shownDevice[1] || '').trim() || ticket.deviceModelName || ticket.modelName || 'Device';
+  const directImage = resolveDeviceImageSource({ url: ticket.deviceImageUrl || ticket.modelImageUrl, base64: ticket.deviceImageBase64 || ticket.modelImageBase64 });
+  const headerImage = (!deviceImgFailed && directImage) || modelImage;
   const modelNumber = ticket.modelNumber || (shownDevice[2] || '').trim();
   const specParts = specDisplayParts({ ...ticket, ramLabel, storageLabel });
   const specText = (specParts.length ? specParts
@@ -819,7 +869,14 @@ export default function TicketDetailScreen({ route, navigation }) {
   const deliveredNote = String([...recordedEvents].reverse()
     .find((e) => String(e?.status || '').toUpperCase() === 'DELIVERED' && /^Delivered by /i.test(e?.note || ''))?.note || '');
   const deliveredByName = deliveredNote.replace(/^Delivered by /i, '').trim();
-  const historyMilestones = buildMilestones(recordedEvents).filter((m) => m.state === 'done' && m.key !== 'COLLECTED'); // Booking Details: no "Device Received at Shop" row
+  const historyMilestones = buildMilestones(recordedEvents).filter((m) => m.state === 'done' && m.key !== 'COLLECTED') // Booking Details: no "Device Received at Shop" row
+    // A Re-Service record's history is its own: it starts with "Re-Service Confirmed".
+    .map((m) => (ticket.serviceCycleNo && m.key === 'BOOKED' ? { ...m, label: 'Re-Service Confirmed' } : m));
+  // Re-Service chain (Original + Re-Service 01, 02 …): device-level facts for the header.
+  const inChain = serviceRecords?.length > 1;
+  const chainDelivered = inChain ? serviceRecords.filter((r) => String(r.status || '').toUpperCase() === 'DELIVERED').length : 0;
+  // Re-Service records bill and deliver exactly like the original service: the
+  // INVOICE card appears at Ready (Generate → View Invoice → Slide to Delivered).
   // Technician photos in two groups: Issue Verified & Updated, then (only
   // after a re-estimate request) Additional Issue Verified & Updated.
   const reqAt = recordedEvents
@@ -862,6 +919,8 @@ export default function TicketDetailScreen({ route, navigation }) {
   const statusKey = String(ticket.status || '').toUpperCase();
   // Delivered: no Assign / Update Status; the bottom bar offers Re-Service.
   const isDelivered = statusKey === 'DELIVERED';
+  // Only the chain's newest service can be re-serviced; older records are history.
+  const canReService = isDelivered && (!serviceRecords?.length || serviceRecords[serviceRecords.length - 1].id === ticket.id);
   // Complaint without the old "IMEI not provided: …" line the booking flow used to append.
   const complaintText = String(ticket.issueDescription || '').replace(/^\s*IMEI not provided:.*$/gim, '').trim();
   const securityText = formatSecurity(ticket.deviceSecurityType, ticket.deviceSecurityValue);
@@ -934,6 +993,30 @@ export default function TicketDetailScreen({ route, navigation }) {
         navigation.navigate('PriceRevised', { ticketId: ticket.id });
         break;
       case 'reservice': {
+        // Linked Re-Service, old flow: straight to the Service Estimate screen
+        // (no popup). The wizard still CREATES a new linked record.
+        if (reServiceSupported !== true) {
+          // No fallback to the old reopen flow, ever — nothing is changed here.
+          const retry = await confirm({
+            title: 'Re-Service unavailable',
+            message: reServiceSupported === null
+              ? 'Loading this device\'s service records… please try again in a moment.'
+              : 'Re-Service is temporarily unavailable (the server could not be reached or is being updated). Nothing was changed.',
+            confirmText: 'Retry',
+          });
+          if (retry) reloadServiceRecords();
+          break;
+        }
+        // No popup: default Paid Re-Service / reason Other. One request id per
+        // tap, so a retried submit returns the same record instead of a second.
+        const reServiceForm = {
+          reServiceOf: ticket.id,
+          serviceType: 'PAID',
+          returnReason: 'OTHER',
+          reServiceNotes: '{}',
+          reServiceRequestId: `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`,
+          complaint: '',
+        };
         // Ticket doesn't store device categoryId — look it up from master-data
         // so SelectModel (and SelectBrand) can filter to Mobile only instead of
         // mixing in Laptops/Tablets that share the same brand (e.g. Apple).
@@ -969,7 +1052,7 @@ export default function TicketDetailScreen({ route, navigation }) {
         enterWizard('RepairServiceBookingShop', {
           screen: key === 'reservice' || key === 'reestimate' || key === 'editestimate' ? 'ServicePriceEstimate' : 'CustomerDetails',
           params: {
-            ...(key === 'reservice' ? buildReServiceParams(ticket) : buildEditParams(ticket, { lineItems, estimatedTotal })),
+            ...(key === 'reservice' ? buildReServiceParams(ticket, reServiceForm) : buildEditParams(ticket, { lineItems, estimatedTotal })),
             categoryId,
             categoryName,
             // Device & Service Details asks for the customer's re-estimate approval.
@@ -1000,6 +1083,14 @@ export default function TicketDetailScreen({ route, navigation }) {
         break;
       }
       case 'history': navigation.navigate('BookingTimeline', { ticketId: ticket.id }); break;
+      // Delivered (read-only) record actions.
+      case 'viewinvoice':
+        if (invoice) navigation.navigate('DeliveryInvoiceReport', { ticketId: ticket.id });
+        else notify('No invoice', 'No invoice was generated for this service.');
+        break;
+      case 'delivery':
+        if (deliveryY.current != null) scrollRef.current?.scrollTo({ y: Math.max(0, deliveryY.current), animated: true });
+        break;
       case 'share':   setShareOpen(true); break;
       case 'barcode': setQrTicketId(ticket.id); break;
       default: break;
@@ -1064,7 +1155,7 @@ export default function TicketDetailScreen({ route, navigation }) {
       </View>
 
       <CompletedTickModal visible={deliveredPopup} title="Completed" message={`${ticket.trackingId ? '#' + ticket.trackingId + ' ' : ''}delivered to the customer.`} onClose={() => setDeliveredPopup(false)} />
-      <ScrollView refreshControl={<RefreshControl refreshing={pullRefreshing} onRefresh={onPullRefresh} colors={['#035C6C']} tintColor="#035C6C" />} contentContainerStyle={{ paddingTop: 0, paddingBottom: insets.bottom + (menuOpen ? 190 : 48) }}>
+      <ScrollView ref={scrollRef} refreshControl={<RefreshControl refreshing={pullRefreshing} onRefresh={onPullRefresh} colors={['#035C6C']} tintColor="#035C6C" />} contentContainerStyle={{ paddingTop: 0, paddingBottom: insets.bottom + (menuOpen ? 190 : 48) }}>
         <View style={{ width: contentW, alignSelf: 'center' }}>
         {/* All sections in one card — section headers divide it. */}
         <View className="mx-4 bg-card rounded-2xl" style={[cardShadow, { marginTop: 12, paddingBottom: 12 }]}>
@@ -1076,8 +1167,13 @@ export default function TicketDetailScreen({ route, navigation }) {
                 className="w-[56px] h-[56px] rounded-xl overflow-hidden items-center justify-center"
                 style={{ backgroundColor: '#E5F3F5' }}
               >
-                {ticket.deviceImageUrl ? (
-                  <Image source={{ uri: ticket.deviceImageUrl }} style={{ width: 56, height: 56 }} resizeMode="cover" />
+                {headerImage ? (
+                  <Image
+                    source={{ uri: headerImage }}
+                    style={{ width: 56, height: 56 }}
+                    resizeMode="cover"
+                    onError={() => { if (headerImage !== modelImage) setDeviceImgFailed(true); }}
+                  />
                 ) : (
                   <Smartphone size={24} color="#6B7280" />
                 )}
@@ -1094,7 +1190,14 @@ export default function TicketDetailScreen({ route, navigation }) {
               {/* Right: Tracking ID and Booked on, stacked. */}
               <View className="items-end ml-2" style={{ maxWidth: 130 }}>
                 <Text className="text-[10px] text-text-muted">Tracking ID</Text>
-                <Text className="text-[12px] font-extrabold text-primary text-right">#{trackingId}</Text>
+                {/* In a Re-Service chain the header names the device's original booking;
+                    the selected record's own id is under SERVICE RECORDS. */}
+                <Text className="text-[12px] font-extrabold text-primary text-right">#{inChain ? serviceRecords[0].trackingId : trackingId}</Text>
+                {inChain && chainDelivered ? (
+                  <View style={{ marginTop: 4, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 999, backgroundColor: '#EDF4E7' }}>
+                    <Text style={{ fontSize: 10.5, fontWeight: '800', color: '#476B26' }}>{chainDelivered} Delivered</Text>
+                  </View>
+                ) : null}
                 {ticket.createdAt ? (
                   <>
                     <Text className="text-[10px] text-text-muted" style={{ marginTop: 6 }}>Booked on</Text>
@@ -1145,6 +1248,16 @@ export default function TicketDetailScreen({ route, navigation }) {
                 onPhotos={(images, index) => setRePhotos({ images, index })}
               />
             </View>
+          </>
+        ) : null}
+
+        {/* ── Service Records — Original | Re-Service 01 | …; each tab opens that record ── */}
+        {serviceRecords?.length > 1 ? (
+          <>
+            <SectionHeader icon={RefreshCcw} label="SERVICE RECORDS"
+              right={<Text style={{ fontSize: 11, fontWeight: '700', color: '#6B7280', marginLeft: 8 }}>{serviceRecords.length} Visits</Text>} />
+            <ServiceRecordsBar records={serviceRecords} currentId={ticket.id}
+              onSelect={(r) => navigation.replace(route.name, { ticketId: r.id, recordPicked: true })} />
           </>
         ) : null}
 
@@ -1448,6 +1561,10 @@ export default function TicketDetailScreen({ route, navigation }) {
               </View>
             ) : null}
             <DetailRow icon={Clock} label={'Booking\nDate & Time'} value={fmtInstant(ticket.createdAt) || '-'} />
+            {inChain ? (
+              <DetailRow icon={RefreshCcw} label="Service Type"
+                value={{ WARRANTY: 'Warranty Re-Service', PAID: 'Paid Re-Service', FREE_REWORK: 'Free Rework' }[ticket.serviceType] || 'Original Service'} />
+            ) : null}
             <DetailRow icon={Calendar} label={'Est. Delivery\nDate & Time'} value={fmtInstant(ticket.estimatedDeliveryAt) || '-'} />
             {/* IMEI (mobile phones only) — shows the number, or a "-" with an Add shortcut when missing. */}
             {showImei ? (
@@ -1644,6 +1761,12 @@ export default function TicketDetailScreen({ route, navigation }) {
                         <Text style={{ fontSize: 12, fontWeight: '800', color: '#476B26' }}>Settled</Text>
                       )}
                     </View>
+                  ) : Number(invoice.finalPayableAmount ?? invoice.netPayableAmount ?? 0) === 0 ? (
+                    // ₹0 (warranty / free rework): not "unpaid" — there is nothing to pay.
+                    <View style={{ flexDirection: 'row', marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: '#F3F4F6' }}>
+                      <Text style={{ flex: 1, fontSize: 12, color: '#6B7280' }}>No payment due</Text>
+                      <Text style={{ fontSize: 12, fontWeight: '800', color: '#476B26' }}>No Charge</Text>
+                    </View>
                   ) : null}
                   <Pressable
                     onPress={() => navigation.navigate('DeliveryInvoiceReport', { ticketId: ticket.id })}
@@ -1654,6 +1777,12 @@ export default function TicketDetailScreen({ route, navigation }) {
                     <Eye size={15} color="#035C6C" />
                     <Text style={{ marginLeft: 6, fontSize: 12.5, fontWeight: '800', color: '#035C6C' }}>View Invoice</Text>
                   </Pressable>
+                  {serviceRecords?.length > 1 ? (
+                    <Pressable onPress={() => navigation.navigate('InvoiceHistory', { ticketId: ticket.id })} accessibilityRole="button"
+                      hitSlop={6} style={{ marginTop: 8, alignSelf: 'center', paddingVertical: 2 }}>
+                      <Text style={{ fontSize: 12, fontWeight: '800', color: '#035C6C', textDecorationLine: 'underline' }}>View Invoice History</Text>
+                    </Pressable>
+                  ) : null}
                   {['INVOICE_GENERATED', 'INVOICE_READY', 'DELIVERED_PROCESSING', 'DELIVERED'].includes(statusKey) && !(doorstep && statusKey !== 'DELIVERED') ? (
                     <View style={{ marginTop: 10 }}>
                       <SlideToComplete
@@ -1762,6 +1891,11 @@ export default function TicketDetailScreen({ route, navigation }) {
             <SectionHeader icon={Camera} label="TECHNICIAN UPLOADED PHOTOS" />
             <View>
               <View className="bg-card rounded-2xl p-3">
+                {inChain ? (
+                  <Text style={{ fontSize: 11.5, color: '#357D89', marginBottom: 6 }}>
+                    Only photos uploaded during {ticket.serviceCycleNo ? recordTitle(ticket) : 'the Original Service'}
+                  </Text>
+                ) : null}
                 {photoGroups.map((g, gi) => (
                 <View key={g.key} style={{ marginTop: gi ? 12 : 0 }}>
                 <Text style={{ fontSize: 12, fontWeight: '800', color: '#374151', marginBottom: 6 }}>{g.label}</Text>
@@ -1786,12 +1920,20 @@ export default function TicketDetailScreen({ route, navigation }) {
           </>
         ) : null}
 
-        {/* ── Actions — the old bottom-bar tiles, now a section (not after delivery) ── */}
-        {!isDelivered ? (
+        {/* ── Delivery History — each service record's own hand-over ── */}
+        {isDelivered && serviceRecords?.length ? (
+          <View onLayout={(e) => { deliveryY.current = e.nativeEvent.layout.y; }}>
+            <SectionHeader icon={Truck} label="DELIVERY HISTORY" />
+            <DeliveryHistory records={serviceRecords} currentId={ticket.id} onPhotos={(images, index) => setRePhotos({ images, index })} />
+          </View>
+        ) : null}
+
+        {/* ── Actions — open service: the booking actions; delivered: read-only history actions ── */}
+        {(
           <>
             <SectionHeader icon={ListChecks} label="ACTIONS" />
             <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-start', backgroundColor: '#FFFFFF', borderRadius: 16, paddingVertical: 8, paddingHorizontal: 4 }}>
-              {ACTION_TILES.filter((t) => t.key !== 'status').map((a, i) => {
+              {(isDelivered ? HISTORY_TILES : ACTION_TILES.filter((t) => t.key !== 'status')).map((a, i) => {
                 const Icon = a.icon;
                 return (
                   <View key={a.key} style={{ width: actionCols === 4 ? '25%' : '20%', alignItems: 'center', marginBottom: 4 }}>
@@ -1812,10 +1954,10 @@ export default function TicketDetailScreen({ route, navigation }) {
               })}
             </View>
           </>
-        ) : null}
+        )}
 
         {/* ── Re-Service — delivered bookings, right after Technician ── */}
-        {isDelivered ? (
+        {canReService ? (
           <>
             <SectionHeader icon={RefreshCcw} label="RE-SERVICE" />
             <Pressable
@@ -1829,7 +1971,7 @@ export default function TicketDetailScreen({ route, navigation }) {
               </View>
               <View style={{ flex: 1, minWidth: 0, marginLeft: 12 }}>
                 <Text style={{ fontSize: 13, fontWeight: '800', color: '#111111' }}>Device back for service?</Text>
-                <Text style={{ fontSize: 11.5, color: '#6B7280', marginTop: 2 }} numberOfLines={1}>Reopen this booking for a re-service</Text>
+                <Text style={{ fontSize: 11.5, color: '#6B7280', marginTop: 2 }} numberOfLines={1}>Start a new linked service record</Text>
               </View>
               <View style={{ height: 32, paddingHorizontal: 12, borderRadius: 16, backgroundColor: '#035C6C', alignItems: 'center', justifyContent: 'center' }}>
                 <Text style={{ fontSize: 12, fontWeight: '800', color: '#FFFFFF' }}>Re-Service</Text>
@@ -1879,7 +2021,7 @@ export default function TicketDetailScreen({ route, navigation }) {
         </View>
         {menuOpen ? (
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center' }}>
-        {(isDelivered ? DELIVERED_TILES : ACTION_TILES).map((a, i) => {
+        {(isDelivered ? (canReService ? DELIVERED_TILES : []) : ACTION_TILES).map((a, i) => {
           const Icon = a.icon;
           return (
             <Pressable
@@ -2241,6 +2383,7 @@ export default function TicketDetailScreen({ route, navigation }) {
         onSave={saveImei}
         onCancel={() => { pendingReadyRow.current = null; setImeiModalOpen(false); }}
       />
+
 
       {/* ── Alternate mobile sheet — add or edit the customer's second number ── */}
       <SafeModal
@@ -2623,16 +2766,19 @@ export function buildEditParams(ticket, { lineItems, estimatedTotal }) {
   };
 }
 
-// Re-Service: the delivered device is back (same or a different issue), so
-// THIS ticket reopens for a new repair. Device identity carries over; the
-// issue, services, photos, estimate and payment start fresh. editMode makes
-// the wizard PUT onto this ticket; reService makes it POST /reopen first.
-function buildReServiceParams(ticket) {
+// Re-Service: the delivered device is back (same or a different issue). The
+// wizard CREATES a new linked record (POST /tickets with reServiceOf) — this
+// ticket is never reopened or edited. Device identity carries over; the issue,
+// services, photos, estimate, payment and technician start fresh.
+function buildReServiceParams(ticket, form) {
   const e = buildEditParams(ticket, { lineItems: [], estimatedTotal: 0 });
   return {
-    editMode: true,
-    editTicketId: ticket.id,
-    trackingId: ticket.trackingId,
+    reServiceOf: form.reServiceOf,
+    serviceType: form.serviceType,
+    returnReason: form.returnReason,
+    reServiceNotes: form.reServiceNotes,
+    reServiceRequestId: form.reServiceRequestId,
+    prefillComplaint: form.complaint,
     customerId: e.customerId,
     customer: e.customer,
     brandId: e.brandId,
